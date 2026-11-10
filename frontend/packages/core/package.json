@@ -1,0 +1,9 @@
+{
+  "name": "@ambi/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared design core of Ambidash (and later Ambiframe): design tokens, designs, contrast checks, i18n",
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}

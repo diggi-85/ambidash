@@ -1,0 +1,93 @@
+[
+  {
+    "id": "fraunces",
+    "name": "Fraunces",
+    "kind": "serif",
+    "file": "fraunces-latin-full-normal.woff2",
+    "weight": "100 900"
+  },
+  {
+    "id": "newsreader",
+    "name": "Newsreader",
+    "kind": "serif",
+    "file": "newsreader-latin-opsz-normal.woff2",
+    "weight": "200 800"
+  },
+  {
+    "id": "instrument",
+    "name": "Instrument Serif",
+    "kind": "serif",
+    "file": "instrument-serif-latin-400-normal.woff2",
+    "weight": "400"
+  },
+  {
+    "id": "playfair",
+    "name": "Playfair Display",
+    "kind": "serif",
+    "file": "playfair-display-latin-wght-normal.woff2",
+    "weight": "400 900"
+  },
+  {
+    "id": "cormorant",
+    "name": "Cormorant Garamond",
+    "kind": "serif",
+    "file": "cormorant-garamond-latin-wght-normal.woff2",
+    "weight": "300 700"
+  },
+  {
+    "id": "inter",
+    "name": "Inter",
+    "kind": "sans",
+    "file": "inter-latin-opsz-normal.woff2",
+    "weight": "100 900"
+  },
+  {
+    "id": "geist",
+    "name": "Geist",
+    "kind": "sans",
+    "file": "geist-latin-wght-normal.woff2",
+    "weight": "100 900"
+  },
+  {
+    "id": "manrope",
+    "name": "Manrope",
+    "kind": "sans",
+    "file": "manrope-latin-wght-normal.woff2",
+    "weight": "200 800"
+  },
+  {
+    "id": "outfit",
+    "name": "Outfit",
+    "kind": "sans",
+    "file": "outfit-latin-wght-normal.woff2",
+    "weight": "100 900"
+  },
+  {
+    "id": "jakarta",
+    "name": "Plus Jakarta Sans",
+    "kind": "sans",
+    "file": "plus-jakarta-sans-latin-wght-normal.woff2",
+    "weight": "200 800"
+  },
+  {
+    "id": "space-grotesk",
+    "name": "Space Grotesk",
+    "kind": "sans",
+    "file": "space-grotesk-latin-wght-normal.woff2",
+    "weight": "300 700"
+  },
+  {
+    "id": "nunito",
+    "name": "Nunito (rund)",
+    "kind": "sans",
+    "file": "nunito-latin-wght-normal.woff2",
+    "weight": "200 1000"
+  },
+  {
+    "id": "doto",
+    "name": "Doto (LED-Punkte)",
+    "kind": "sans",
+    "file": "doto-latin-full-normal.woff2",
+    "weight": "100 900"
+  }
+]
