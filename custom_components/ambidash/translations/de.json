@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ambidash",
+        "description": "Ambidash baut ein Dashboard aus deinen Etagen, Bereichen und Geräten. Nach der Einrichtung fügst du es unter Einstellungen → Dashboards → Dashboard hinzufügen → Ambidash hinzu."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Bereits eingerichtet. Es ist nur eine Konfiguration möglich."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Fotos aus dem Internet",
+        "description": "Dashboards können freie Platzhalter-Fotos (Wikimedia, NASA, Lorem Picsum, Bing) als Hintergrund zeigen. Home Assistant lädt und liefert sie selbst, deine Geräte melden sich bei diesen Seiten nicht. Es wird nichts abgerufen, bis ein Dashboard Platzhalter-Fotos verlangt.",
+        "data": {
+          "external_photos": "Abruf von Platzhalter-Fotos erlauben"
+        },
+        "data_description": {
+          "external_photos": "Ausschalten stoppt jeden Abruf; Dashboards zeigen dann stattdessen ihre Hintergrundfarbe."
+        }
+      }
+    }
+  },
+  "issues": {
+    "photos_disabled": {
+      "title": "Ein Dashboard verlangt Fotos aus dem Internet",
+      "description": "Ein Dashboard nutzt Platzhalter-Fotos als Hintergrund, der Abruf ist aber ausgeschaltet. Schalte ihn unter Einstellungen → Geräte & Dienste → Ambidash → Konfigurieren ein oder entferne `placeholder` aus dem Dashboard."
+    }
+  }
+}

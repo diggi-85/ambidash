@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ambidash",
+        "description": "Ambidash bouwt een dashboard op basis van je verdiepingen, ruimtes en apparaten. Voeg het na de installatie toe via Instellingen → Dashboards → Dashboard toevoegen → Ambidash."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Al geconfigureerd. Er is maar één configuratie mogelijk."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Foto's van internet",
+        "description": "Dashboards kunnen gratis plaatshouderfoto's (Wikimedia, NASA, Lorem Picsum, Bing) als achtergrond tonen. Home Assistant haalt ze op en levert ze zelf; je apparaten nemen geen contact op met die sites. Er wordt niets opgehaald totdat een dashboard om plaatshouderfoto's vraagt.",
+        "data": {
+          "external_photos": "Ophalen van plaatshouderfoto's toestaan"
+        },
+        "data_description": {
+          "external_photos": "Zet dit uit om alles te stoppen; dashboards tonen dan hun achtergrondkleur."
+        }
+      }
+    }
+  },
+  "issues": {
+    "photos_disabled": {
+      "title": "Een dashboard vraagt om foto's van internet",
+      "description": "Een dashboard gebruikt plaatshouderfoto's als achtergrond, maar ophalen staat uit. Zet het aan onder Instellingen → Apparaten & diensten → Ambidash → Configureren, of verwijder `placeholder` uit het dashboard."
+    }
+  }
+}

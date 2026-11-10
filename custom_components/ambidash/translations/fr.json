@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ambidash",
+        "description": "Ambidash crée un tableau de bord à partir de vos étages, pièces et appareils. Après l'installation, ajoutez-le via Paramètres → Tableaux de bord → Ajouter un tableau de bord → Ambidash."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Déjà configuré. Une seule configuration est possible."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Photos d'Internet",
+        "description": "Les tableaux de bord peuvent afficher des photos libres de remplacement (Wikimedia, NASA, Lorem Picsum, Bing) en arrière-plan. Home Assistant les récupère et les sert lui-même ; vos appareils ne contactent pas ces sites. Rien n'est récupéré tant qu'un tableau de bord ne demande pas de photos de remplacement.",
+        "data": {
+          "external_photos": "Autoriser la récupération des photos de remplacement"
+        },
+        "data_description": {
+          "external_photos": "Désactivez pour tout arrêter ; les tableaux de bord affichent alors leur couleur d'arrière-plan."
+        }
+      }
+    }
+  },
+  "issues": {
+    "photos_disabled": {
+      "title": "Un tableau de bord demande des photos d'Internet",
+      "description": "Un tableau de bord utilise des photos de remplacement en arrière-plan, mais la récupération est désactivée. Activez-la sous Paramètres → Appareils et services → Ambidash → Configurer, ou retirez `placeholder` du tableau de bord."
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ambidash",
+        "description": "Ambidash builds a dashboard from your floors, areas and devices. After setup, add it under Settings → Dashboards → Add dashboard → Ambidash."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Photos from the internet",
+        "description": "Dashboards can show free placeholder photos (Wikimedia, NASA, Lorem Picsum, Bing) as their background. Home Assistant fetches and serves them itself; your devices never contact those sites. Nothing is fetched until a dashboard asks for placeholder photos.",
+        "data": {
+          "external_photos": "Allow fetching placeholder photos"
+        },
+        "data_description": {
+          "external_photos": "Turn off to stop all fetching; dashboards then show their background colour instead."
+        }
+      }
+    }
+  },
+  "issues": {
+    "photos_disabled": {
+      "title": "A dashboard asks for photos from the internet",
+      "description": "A dashboard uses placeholder photos as its background, but fetching them is switched off. Turn it on under Settings → Devices & services → Ambidash → Configure, or remove `placeholder` from the dashboard."
+    }
+  }
+}
