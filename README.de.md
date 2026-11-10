@@ -6,6 +6,8 @@
 
 <p align="center"><a href="README.md">English</a> · <b>Deutsch</b></p>
 
+<p align="center"><img src="docs/images/dashboard-dark.png" alt="Ein Ambidash-Dashboard im Design Glass: Etagen, Szenen und Kacheln auf einem Verlaufshintergrund" width="900"></p>
+
 ## Was du bekommst
 
 - **Ein Dashboard ohne Einrichtung:** Etagen → Bereiche → Kacheln, gebaut aus dem, was Home Assistant schon weiß. Versteckte und Diagnose-Entitäten bleiben draußen; Geräte ohne Bereich erscheinen zuletzt unter „Ohne Bereich“.
@@ -20,6 +22,20 @@
 - **Handy, Tablet, Browser, Kiosk:** zwei Spalten auf dem Handy, breitere Kacheln auf großen Bildschirmen, optional Vollbild für Wandtablets (läuft in der HA-App und in Fully Kiosk, ohne Kiosk-Plugin).
 - **Barrierefrei:** Der Textkontrast jedes Designs wird gegen WCAG AA geprüft, Kacheln sind mindestens 72 px hoch, per Tastatur bedienbar mit sichtbarem Fokus, „Bewegung reduzieren“ wird beachtet.
 - **Sprachen:** Deutsch, Englisch, Niederländisch, Französisch (folgt dem HA-Benutzer).
+
+## Screenshots
+
+<p align="center"><img src="docs/images/dashboard-light.png" width="560" alt="Dasselbe Dashboard im Design Newspaper, hell"> <img src="docs/images/dashboard-phone.png" width="190" alt="Das Dashboard auf dem Handy, vier Spalten"></p>
+<p align="center"><em>Ein Dashboard, zwei Looks: Glass (dunkel, ganz oben) und Newspaper (hell), auf Tablet oder Wanddisplay und auf dem Handy.</em></p>
+
+<p align="center"><img src="docs/images/popup.png" width="760" alt="Ein Pop-up mit An/Aus-Taste und Helligkeitsregler"></p>
+<p align="center"><em>Tippen schaltet, langes Drücken öffnet das Pop-up mit Reglern.</em></p>
+
+<p align="center"><img src="docs/images/studio-designs.png" width="860" alt="Das Studio mit der Design-Galerie und einer Live-Vorschau"></p>
+<p align="center"><em>Das Studio: 36 Designs als Galerie, mit Live-Vorschau auf deinen echten Geräten.</em></p>
+
+<p align="center"><img src="docs/images/layout-editor.png" width="860" alt="Der Layout-Editor mit Raster, Seiten und den Eigenschaften einer Kachel"></p>
+<p align="center"><em>Der Layout-Editor: ziehen und skalieren, je ein Raster für Handy, Tablet und Wanddisplay, und was Tippen oder langes Drücken pro Kachel tut.</em></p>
 
 ## Installation
 

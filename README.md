@@ -6,6 +6,8 @@
 
 <p align="center"><b>English</b> · <a href="README.de.md">Deutsch</a></p>
 
+<p align="center"><img src="docs/images/dashboard-dark.png" alt="An Ambidash dashboard in the Glass design: floors, scenes and tiles on a gradient background" width="900"></p>
+
 ## What you get
 
 - **A dashboard without setup:** floors → areas → tiles, built from what Home Assistant already knows. Hidden and diagnostic entities stay out; devices without an area appear last under "Unassigned".
@@ -20,6 +22,20 @@
 - **Phone, tablet, browser, kiosk:** two columns on a phone, wider tiles on large screens, an optional full-screen mode for wall tablets (works in the HA app and Fully Kiosk, no kiosk plugin needed).
 - **Accessible:** text contrast of every design is checked against WCAG AA, tiles are at least 72 px high, keyboard operable with a visible focus ring, "reduce motion" respected.
 - **Languages:** English, German, Dutch, French (follows the HA user).
+
+## Screenshots
+
+<p align="center"><img src="docs/images/dashboard-light.png" width="560" alt="The same dashboard in the Newspaper design, light"> <img src="docs/images/dashboard-phone.png" width="190" alt="The dashboard on a phone, four columns"></p>
+<p align="center"><em>One dashboard, two looks: Glass (dark, at the top) and Newspaper (light), on a tablet or wall display and on a phone.</em></p>
+
+<p align="center"><img src="docs/images/popup.png" width="760" alt="A pop-up with an on/off button and a brightness slider"></p>
+<p align="center"><em>A tap switches, a long press opens the pop-up with sliders.</em></p>
+
+<p align="center"><img src="docs/images/studio-designs.png" width="860" alt="The Studio with the design gallery and a live preview"></p>
+<p align="center"><em>The Studio: 36 designs as a gallery, with a live preview on your real devices.</em></p>
+
+<p align="center"><img src="docs/images/layout-editor.png" width="860" alt="The layout editor with a grid, pages and the properties of a tile"></p>
+<p align="center"><em>The layout editor: drag and resize, one grid each for phone, tablet and wall display, and what a tap or a long press does per tile.</em></p>
 
 ## Installation
 
