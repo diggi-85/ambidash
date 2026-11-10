@@ -1,0 +1,4 @@
+# Python tests (local: uv venv .venv --python 3.14 && uv pip install --python .venv/bin/python -r requirements_test.txt)
+pytest-homeassistant-custom-component==0.13.375
+# The frontend integration is a dependency of ambidash; its bundle is a separate package
+home-assistant-frontend==20261028.4

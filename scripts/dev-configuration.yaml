@@ -1,0 +1,38 @@
+# Home Assistant configuration for the local development instance (scripts/dev-ha.sh), localhost only.
+homeassistant:
+  name: Ambidash Dev
+  latitude: 51.5
+  longitude: 6.9
+  elevation: 30
+  unit_system: metric
+  time_zone: Europe/Berlin
+  language: de
+  # No password on this Mac: the dev instance is only reachable from localhost
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks: ["127.0.0.1", "::1"]
+      allow_bypass_login: true
+    - type: homeassistant
+
+http:
+frontend:
+media_source:
+websocket_api:
+api:
+lovelace:
+sun:
+demo:
+
+# Scenes need an id to show up in the registry (and so on the dashboard)
+scene:
+  - id: movie_night
+    name: Movie night
+    entities:
+      light.living_room_rgbww_lights: { state: "on", brightness: 60 }
+      light.ceiling_lights: { state: "off" }
+  - id: all_off
+    name: All off
+    entities:
+      light.living_room_rgbww_lights: { state: "off" }
+      light.ceiling_lights: { state: "off" }
+      light.kitchen_lights: { state: "off" }

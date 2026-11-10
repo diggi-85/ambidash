@@ -1,0 +1,26 @@
+# Minimal local Home Assistant for the Ambidash spike (test instance only, never the live one).
+homeassistant:
+  name: Ambidash Spike
+  latitude: 51.5
+  longitude: 6.9
+  elevation: 30
+  unit_system: metric
+  time_zone: Europe/Berlin
+  language: de
+  # Open http://localhost:8123 straight from this Mac without a password (test instance on localhost only)
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks: ["127.0.0.1", "::1"]
+      allow_bypass_login: true
+    - type: homeassistant
+
+http:
+frontend:
+websocket_api:
+api:
+lovelace:
+sun:
+input_boolean:
+  spike_light:
+    name: Spike-Licht
+ambidash:

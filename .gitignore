@@ -1,0 +1,12 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+.pytest_cache/
+
+# Local development Home Assistant (scripts/dev-ha.sh)
+/.dev/
+
+# The built frontend (custom_components/ambidash/frontend/ambidash.js) is committed on purpose:
+# HACS installs straight from the repository. CI fails if it is out of date.
