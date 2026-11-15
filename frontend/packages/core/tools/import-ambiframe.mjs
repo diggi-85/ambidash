@@ -46,14 +46,18 @@ const themes = data.themes
   .map((t) => ({ af: t.id, id: NEW[t.id][0], name: NEW[t.id][1], hint: t.hint, shared: pick(t.shared), dark: pick(t.dark), light: pick(t.light) }));
 
 // Fonts of the styles Ambidash made by hand (and of Ambiframe's seasons style): they take Ambiframe's fonts, not system ones
-const FONT_KEYS = ["display", "sans", "label-font", "num-font"];
+const FONT_KEYS = ["display", "sans", "label-font", "num-font", "clock-weight", "clock-track"];
 const fonts = Object.fromEntries(
   data.themes
     .filter((t) => !(t.id in NEW) && !t.id.startsWith("saison-"))
     .map((t) => [t.id, Object.fromEntries(FONT_KEYS.filter((k) => t.shared[k]).map((k) => [k, t.shared[k]]))]),
 );
+// The clock's colon, per mode: the clock widget reads it
+const colon = Object.fromEntries(
+  data.themes.filter((t) => !(t.id in NEW) && !t.id.startsWith("saison-")).map((t) => [t.id, Object.fromEntries(["dark", "light"].map((m) => [m, Object.fromEntries(["colon", "colon-opacity"].filter((k) => t[m][k]).map((k) => [k, t[m][k]]))]))]),
+);
 const MARK = "\n//--fonts--\n";
-let body = (JSON.stringify(themes, null, 2) + MARK + JSON.stringify(fonts, null, 2)).replace(/"([a-z][\w-]*)":/g, (m, k) => (/^[a-z]\w*$/.test(k) ? `${k}:` : m));
+let body = (JSON.stringify(themes, null, 2) + MARK + JSON.stringify(fonts, null, 2) + MARK + JSON.stringify(colon, null, 2)).replace(/"([a-z][\w-]*)":/g, (m, k) => (/^[a-z]\w*$/.test(k) ? `${k}:` : m));
 // Long values that repeat (font stacks, page art, shadows) become constants, so the bundle carries each once
 const counts = new Map();
 for (const [literal] of body.matchAll(/"(?:[^"\\]|\\.)*"/g)) if (literal.length > 40) counts.set(literal, (counts.get(literal) ?? 0) + 1);
@@ -68,6 +72,7 @@ writeFileSync(
     constants.join("") +
     `\nexport interface AfTheme {\n  af: string;\n  id: string;\n  name: string;\n  hint: string;\n  shared: Record<string, string>;\n  dark: Record<string, string>;\n  light: Record<string, string>;\n}\n\n` +
     `export const AF_THEMES: AfTheme[] = ${body.split(MARK)[0]};\n\n` +
-    `/** Fonts of the styles made by hand, by Ambiframe's id */\nexport const AF_FONTS: Record<string, Record<string, string>> = ${body.split(MARK)[1]};\n`,
+    `/** Fonts and clock weight and tracking of the styles made by hand, by Ambiframe's id */\nexport const AF_FONTS: Record<string, Record<string, string>> = ${body.split(MARK)[1]};\n\n` +
+    `/** The clock's colon (colour and opacity) of the styles made by hand, by Ambiframe's id and mode */\nexport const AF_COLON: Record<string, Record<"dark" | "light", Record<string, string>>> = ${body.split(MARK)[2]};\n`,
 );
 console.log(`${themes.length} styles written`);

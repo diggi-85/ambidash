@@ -214,6 +214,164 @@ describe("editing", () => {
     expect(previewOptions(el).fullscreen).toBeUndefined();
   });
 
+  describe("Ruhemodus", () => {
+    const weather = (id: string, name: string) => ({ entity_id: id, state: "sunny", attributes: { friendly_name: name }, last_changed: "" });
+    const opened = async () => {
+      const hass = setup(stored(KITCHEN)).hass;
+      Object.assign(hass, { states: { "weather.home": weather("weather.home", "Home"), "weather.work": weather("weather.work", "Work") } });
+      const el = await mount(hass);
+      await click(el, "Edit");
+      await step(el, "name");
+      return el;
+    };
+    const rest = (el: AmbidashStudio) => previewOptions(el).rest;
+    const box = (el: AmbidashStudio, label: string) => all(el, "label.check").find((l) => l.textContent?.includes(label))!.querySelector("input") as HTMLInputElement;
+    const tick = async (el: AmbidashStudio, label: string, on: boolean) => {
+      const input = box(el, label);
+      input.checked = on;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await settle(el);
+    };
+    const choose = async (el: AmbidashStudio, selector: string, value: string) => {
+      const select = $(el, selector) as HTMLSelectElement;
+      select.value = value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await settle(el);
+    };
+
+    it("is off until it is switched on, and then has its defaults without writing them", async () => {
+      const el = await opened();
+      expect(rest(el)).toBeUndefined();
+      expect($(el, "#ra")).toBeNull();
+      await tick(el, "Rest mode", true);
+      expect(rest(el)).toEqual({});
+      expect(($(el, "#ra") as HTMLInputElement).value).toBe("5");
+      expect(($(el, "#rd") as HTMLInputElement).value).toBe("40");
+      await tick(el, "Rest mode", false);
+      expect(rest(el)).toBeUndefined();
+      expect($(el, "#ra")).toBeNull();
+    });
+
+    it("takes whole minutes from 1 to 240 and nothing else", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      await type(el, "#ra", "10");
+      expect(rest(el)).toEqual({ after: 10 });
+      for (const wrong of ["0", "241", "2.5", "", "abc"]) {
+        await type(el, "#ra", wrong);
+        expect(rest(el)).toEqual({ after: 10 });
+      }
+      await type(el, "#ra", "5");
+      expect(rest(el)).toEqual({});
+    });
+
+    it("writes the clock options and leaves the defaults out", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      await choose(el, "#rf", "24");
+      await tick(el, "Show seconds", true);
+      await tick(el, "Show the date", false);
+      expect(rest(el)).toEqual({ format: "24", seconds: true, date: false });
+      await choose(el, "#rf", "auto");
+      await tick(el, "Show seconds", false);
+      await tick(el, "Show the date", true);
+      expect(rest(el)).toEqual({});
+    });
+
+    it("offers the weather entities, and no weather", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      expect([...($(el, "#rw") as HTMLSelectElement).options].map((o) => [o.value, o.textContent?.trim()])).toEqual([["", "No weather"], ["weather.home", "Home"], ["weather.work", "Work"]]);
+      await choose(el, "#rw", "weather.work");
+      expect(rest(el)).toEqual({ weather: "weather.work" });
+      await choose(el, "#rw", "");
+      expect(rest(el)).toEqual({});
+    });
+
+    it("darkens as much as asked, 40 being what it does without being told", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      await type(el, "#rd", "70");
+      expect(rest(el)).toEqual({ dim: 70 });
+      expect(text(el)).toContain("70 %");
+      await type(el, "#rd", "40");
+      expect(rest(el)).toEqual({});
+    });
+
+    it("says for which device classes: the tablet and the wall display, and at least one", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      expect(["Phone", "Tablet", "Wall display"].map((l) => box(el, l).checked)).toEqual([false, true, true]);
+      await tick(el, "Phone", true);
+      expect(rest(el)).toEqual({ devices: ["phone", "tablet", "wall"] });
+      await tick(el, "Tablet", false);
+      expect(rest(el)).toEqual({ devices: ["phone", "wall"] });
+      await tick(el, "Phone", false);
+      expect(rest(el)).toEqual({ devices: ["wall"] });
+      await tick(el, "Wall display", false); // the last one stays
+      expect(rest(el)).toEqual({ devices: ["wall"] });
+      expect(box(el, "Wall display").checked).toBe(true);
+      await tick(el, "Tablet", true);
+      expect(rest(el)).toEqual({}); // tablet and wall display are the default again
+    });
+
+    it("says when it may start: a time of day, or not while a media player plays", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      expect([...($(el, "#rwhen") as HTMLSelectElement).options].map((o) => o.value)).toEqual(["always", "morning", "day", "evening", "night", "quiet"]);
+      await choose(el, "#rwhen", "night");
+      expect(rest(el)).toEqual({ when: [{ condition: "time", after: "22:00", before: "05:00" }] });
+      await choose(el, "#rwhen", "quiet");
+      expect(rest(el)!.when).toHaveLength(1);
+      expect(rest(el)!.when![0]).toMatchObject({ condition: "template" });
+      await choose(el, "#rwhen", "always");
+      expect(rest(el)).toEqual({});
+    });
+
+    it("has a YAML field for the conditions in advanced mode only, saves a valid list at once and calls such conditions own", async () => {
+      const memory = new Map<string, string>();
+      vi.stubGlobal("localStorage", { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => void memory.set(k, v), removeItem: (k: string) => void memory.delete(k) });
+      const el = await opened();
+      try {
+        await tick(el, "Rest mode", true);
+        expect($(el, "#rwhen-yaml")).toBeNull();
+        await tick(el, "Advanced mode", true);
+        expect(($(el, "#rwhen-yaml") as HTMLTextAreaElement).value).toBe("");
+        await type(el, "#rwhen-yaml", "- condition: state\n  entity: media_player.tv\n  state: playing\n");
+        const saved = { when: [{ condition: "state", entity: "media_player.tv", state: "playing" }] };
+        expect(rest(el)).toEqual(saved);
+        expect([...($(el, "#rwhen") as HTMLSelectElement).options].map((o) => o.value)).toContain("custom");
+        await type(el, "#rwhen-yaml", "condition: state");
+        expect($(el, ".hint[style]")?.textContent).toContain("The conditions are a list");
+        expect(rest(el)).toEqual(saved); // nothing is saved until it is a list
+        expect(($(el, "#rwhen-yaml") as HTMLTextAreaElement).value).toBe("condition: state");
+        await type(el, "#rwhen-yaml", "");
+        expect(rest(el)).toEqual({});
+      } finally {
+        localStorage.removeItem("ambidash.advanced");
+      }
+    });
+
+    it("tries it in the preview, which never goes to rest by itself", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      const preview = $(el, "ambidash-root") as unknown as { preview: boolean; shadowRoot: ShadowRoot };
+      expect(preview.preview).toBe(true);
+      expect(preview.shadowRoot.querySelector(".rest")).toBeNull();
+      await click(el, "Try it now");
+      await settle(el);
+      expect(preview.shadowRoot.querySelector(".rest")).not.toBeNull();
+    });
+
+    it("can be undone like every other change", async () => {
+      const el = await opened();
+      await tick(el, "Rest mode", true);
+      (all(el, "button").find((b) => b.getAttribute("aria-label") === "Undo" || b.title === "Undo") as HTMLButtonElement | undefined)?.click();
+      await settle(el);
+      expect(rest(el)).toBeUndefined();
+    });
+  });
+
   it("chooses areas and kinds of devices to show", async () => {
     const hass = setup(stored(KITCHEN)).hass;
     const light = { entity_id: "light.lamp", state: "on", attributes: { friendly_name: "Lamp" }, last_changed: "" };
@@ -291,6 +449,82 @@ describe("editing", () => {
     expect(localStorage.getItem("ambidash.advanced")).toBe("0");
     expect($(el, "nav [data-step=advanced]")).toBeNull();
     expect($(el, 'nav [aria-current="step"]')?.getAttribute("data-step")).toBe("look");
+  });
+
+  describe("import from a dashboard", () => {
+    const CONFIG = { views: [{ title: "Kitchen", cards: [{ type: "tile", entity: "light.a" }, { type: "markdown", content: "hi" }] }] };
+    const openImport = async (handlers: Record<string, (msg: Call) => unknown> = {}) => {
+      const backend = setup(stored(KITCHEN), { "lovelace/dashboards/list": () => [{ url_path: "garage", title: "Garage" }, { url_path: "plain" }], "lovelace/config": () => CONFIG, ...handlers });
+      const el = await mount(backend.hass);
+      await click(el, "Edit");
+      await step(el, "contents");
+      await click(el, "Import from a dashboard");
+      return { el, ...backend };
+    };
+    const note = (el: AmbidashStudio) => $(el, ".import [role=status]")?.textContent;
+
+    it("lists the default dashboard and the others, and takes the views of the chosen one over as pages, which undo takes back", async () => {
+      const { el, calls } = await openImport();
+      expect(all(el, "#imp option").map((o) => [o.getAttribute("value"), o.textContent])).toEqual([["", "Overview"], ["garage", "Garage"], ["plain", "plain"]]);
+      await choose(el, "#imp", "garage");
+      await click(el, "Import");
+      expect(calls).toContainEqual({ type: "lovelace/config", url_path: "garage", force: false });
+      const pages = previewOptions(el).pages!;
+      expect(pages.map((p) => p.name)).toEqual(["Kitchen"]);
+      expect(pages[0].items.map((i) => i.type)).toEqual(["tile", "card"]);
+      expect(note(el)).toBe("Imported 1 pages: 1 tiles, 0 headings and 1 cards.");
+      el.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Undo"]')!.click();
+      await settle(el);
+      expect(previewOptions(el).pages).toBeUndefined();
+    });
+
+    it("asks for the default dashboard without a url path, and adds to the pages that are already there", async () => {
+      const { el, calls } = await openImport();
+      await click(el, "Import");
+      expect(calls).toContainEqual({ type: "lovelace/config", url_path: null, force: false });
+      await click(el, "Import");
+      expect(previewOptions(el).pages!.map((p) => p.id)).toEqual(["page-1", "page-2"]);
+    });
+
+    it("says so when a dashboard builds itself, is a strategy, has no cards or cannot be read", async () => {
+      const failing = (error: unknown) => () => {
+        throw error;
+      };
+      const generated = "This dashboard is generated automatically and has no cards to import.";
+      const { el } = await openImport({ "lovelace/config": failing({ code: "config_not_found", message: "Config not found" }) });
+      await click(el, "Import");
+      expect(note(el)).toBe(generated);
+      expect($(el, ".import [role=status]")?.getAttribute("style")).toContain("--error-color");
+      expect(previewOptions(el).pages).toBeUndefined();
+
+      const strategy = await openImport({ "lovelace/config": () => ({ strategy: { type: "original-states" } }) });
+      await click(strategy.el, "Import");
+      expect(note(strategy.el)).toBe(generated);
+      document.body.innerHTML = "";
+
+      const empty = await openImport({ "lovelace/config": () => ({ views: [] }) });
+      await click(empty.el, "Import");
+      expect(note(empty.el)).toBe("Nothing to import: the dashboard has no cards.");
+      document.body.innerHTML = "";
+
+      const broken = await openImport({ "lovelace/config": failing({ code: "unknown_error", message: "Boom" }) });
+      await click(broken.el, "Import");
+      expect(note(broken.el)).toBe("Could not read the dashboard: Boom");
+    });
+
+    it("says how many widgets were made from clock and weather cards", async () => {
+      const { el } = await openImport({ "lovelace/config": () => ({ views: [{ title: "A", cards: [{ type: "clock" }, { type: "weather-forecast", entity: "weather.home" }, { type: "tile", entity: "light.a" }] }] }) });
+      await click(el, "Import");
+      expect(note(el)).toBe("Imported 1 pages: 1 tiles, 0 headings and 0 cards. 2 clock and weather widgets were made from clock and weather cards.");
+    });
+
+    it("mentions what it left out, and closes again", async () => {
+      const { el } = await openImport({ "lovelace/config": () => ({ views: [{ title: "A", badges: ["person.x"], cards: [{ type: "tile", entity: "light.a" }, null] }] }) });
+      await click(el, "Import");
+      expect(note(el)).toBe("Imported 1 pages: 1 tiles, 0 headings and 0 cards. Badges are not imported. 1 entries could not be taken over.");
+      await click(el, "Import from a dashboard");
+      expect($(el, ".import")).toBeNull();
+    });
   });
 
   it("shows every design as a card in its own colours, marks the chosen one and follows light or dark", async () => {

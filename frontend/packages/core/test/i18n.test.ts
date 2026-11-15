@@ -20,6 +20,20 @@ describe("i18n", () => {
     expect(t("Off")).toBe("Aus");
   });
 
+  it("takes texts that are added later, for the languages they are given in, and lets the later text win", () => {
+    const { t, setLang, extend } = i18n();
+    setLang("de");
+    expect(t("Studio")).toBe("Studio");
+    extend({ de: { Studio: "Atelier", Off: "Weg" }, fr: { Studio: "Atelier" } });
+    expect(t("Studio")).toBe("Atelier");
+    expect(t("Hello {name}", { name: "Ben" })).toBe("Hallo Ben");
+    expect(t("Off")).toBe("Weg");
+    setLang("fr");
+    expect(t("Studio")).toBe("Atelier");
+    setLang("nl");
+    expect(t("Studio")).toBe("Studio");
+  });
+
   it("resolves the language: setting before HA user, unknown becomes English", () => {
     const { resolveLang } = i18n();
     expect(resolveLang("fr", "de")).toBe("fr");

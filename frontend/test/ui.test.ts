@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options {"url": "http://localhost:8123/ambidash"}
 // Tile and root card in a (simulated) browser, plus the strategy
+import { resolveTokens } from "@ambi/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLang } from "../src/i18n";
 import { imageLoader } from "../src/photos";
@@ -615,6 +616,25 @@ describe("own layout", () => {
     expect(el.shadowRoot!.querySelector("ambidash-popup")).toBeNull();
   });
 
+  it("draws a card item as a Home Assistant card with its configuration", async () => {
+    const withCard: Page[] = [{ id: "p", name: "P", items: [{ id: "c1", type: "card", card: { type: "markdown", content: "Hi" } }, { id: "c2", type: "card" }] }];
+    const el = await root(homeHass(), { pages: withCard });
+    const cards = [...el.shadowRoot!.querySelectorAll<HTMLElement & { config?: unknown }>("ambidash-card")];
+    expect(cards).toHaveLength(1); // a card item without a configuration draws nothing
+    expect(cards[0].config).toEqual({ type: "markdown", content: "Hi" });
+  });
+
+  it("draws a clock and a weather widget with their options, and nothing for a weather entity that is gone", async () => {
+    const hass = homeHass();
+    hass.states["weather.home"] = ent("weather.home", "sunny", { temperature: 20 });
+    const items: Page[] = [{ id: "p", name: "P", items: [{ id: "k1", type: "clock", format: "24", seconds: true, date: false }, { id: "k2", type: "clock" }, { id: "w1", type: "weather", entity: "weather.home", forecast: false }, { id: "w2", type: "weather", entity: "weather.gone" }] }];
+    const el = await root(hass, { pages: items });
+    const clocks = [...el.shadowRoot!.querySelectorAll<HTMLElement & { format: string; seconds: boolean; date: boolean }>("ambidash-clock")];
+    expect(clocks.map((c) => [c.format, c.seconds, c.date])).toEqual([["24", true, false], ["auto", false, true]]);
+    const weathers = [...el.shadowRoot!.querySelectorAll<HTMLElement & { stateObj: { entity_id: string }; forecast: boolean }>("ambidash-weather")];
+    expect(weathers.map((w) => [w.stateObj.entity_id, w.forecast])).toEqual([["weather.home", false]]);
+  });
+
   it("hands the tap and hold actions of an item on to its tile", async () => {
     const acting: Page[] = [{ id: "p", name: "P", items: [{ id: "t", type: "tile", entity: "light.lamp", tap: "popup", hold: "none" }] }];
     const el = await root(homeHass(), { pages: acting });
@@ -626,6 +646,194 @@ describe("own layout", () => {
     const own: Page[] = [{ id: "p", name: "P", items: [{ id: "t", type: "tile", entity: "light.lamp", name: "Reading light" }] }];
     const el = await root(homeHass(), { pages: own });
     expect((el.shadowRoot!.querySelector("ambidash-tile") as AmbidashTile).name).toBe("Reading light");
+  });
+
+  describe("conditions", () => {
+    const door = (state: string) => homeHass({ states: { ...homeHass().states, "binary_sensor.door": ent("binary_sensor.door", state) } });
+    const when = (...show_if: NonNullable<Page["items"][number]["show_if"]>): Page[] => [{ id: "p", name: "P", items: [{ id: "h", type: "heading", text: "Shown" }, { id: "x", type: "heading", text: "Conditional", show_if }] }];
+
+    it("does not draw an item whose conditions do not hold, and draws it as soon as they do", async () => {
+      const pages = when({ condition: "state", entity: "binary_sensor.door", state: "on" });
+      const el = await root(door("off"), { pages });
+      expect(texts(el, ".heading")).toEqual(["Shown"]);
+      expect(el.shadowRoot!.querySelectorAll(".cell")).toHaveLength(1);
+      el.hass = door("on");
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown", "Conditional"]);
+      el.hass = door("off");
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown"]);
+    });
+
+    it("asks for the device class the card's width calls for", async () => {
+      const observers: ((entries: { contentRect: { width: number } }[]) => void)[] = [];
+      vi.stubGlobal("ResizeObserver", class { constructor(cb: (entries: { contentRect: { width: number } }[]) => void) { observers.push(cb); } observe() {} disconnect() {} });
+      const el = await root(homeHass(), { pages: when({ condition: "device", devices: ["wall"] }) });
+      expect(texts(el, ".heading")).toEqual(["Shown"]); // a tablet until the card is measured
+      observers[0]([{ contentRect: { width: 1400 } }]);
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown", "Conditional"]);
+      observers[0]([{ contentRect: { width: 390 } }]);
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown"]);
+      el.remove();
+      vi.unstubAllGlobals();
+    });
+
+    it("judges a time condition again on the minute, and only keeps a timer while one exists", async () => {
+      vi.setSystemTime(new Date("2026-11-12T10:59:30"));
+      const base = vi.getTimerCount();
+      const plain = await root(homeHass(), { pages: when({ condition: "device", devices: ["wall", "tablet", "phone"] }) });
+      expect(vi.getTimerCount()).toBe(base);
+      plain.remove();
+      const el = await root(homeHass(), { pages: when({ condition: "time", before: "11:00" }) });
+      expect(texts(el, ".heading")).toEqual(["Shown", "Conditional"]);
+      expect(vi.getTimerCount()).toBe(base + 1);
+      await vi.advanceTimersByTimeAsync(31_000);
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown"]);
+      el.remove();
+      expect(vi.getTimerCount()).toBe(base);
+    });
+  });
+
+  describe("state rules", () => {
+    type Rules = NonNullable<Page["items"][number]["states"]>;
+    const door = (state: string) => homeHass({ states: { ...homeHass().states, "binary_sensor.door": ent("binary_sensor.door", state) } });
+    const tilePage = (states: Rules): Page[] => [{ id: "p", name: "P", items: [{ id: "t", type: "tile", entity: "light.lamp", states }] }];
+    const tile = (el: AmbidashRoot) => el.shadowRoot!.querySelector<AmbidashTile>("ambidash-tile")!;
+    const open: Rules = [{ when: [{ condition: "state", entity: "binary_sensor.door", state: "on" }], color: "alert", icon: "mdi:door-open", status: "Door open" }];
+
+    it("gives the tile the look of the first rule that holds, and takes it back when none does", async () => {
+      const el = await root(door("off"), { pages: tilePage(open), design: "home", mode: "dark" });
+      expect(tile(el).look).toBeUndefined();
+      el.hass = door("on");
+      await pass(el);
+      const look = tile(el).look!;
+      expect(look).toMatchObject({ icon: "mdi:door-open", status: "Door open", color: resolveTokens("home", "dark").alert });
+      await tile(el).updateComplete;
+      const box = tile(el).shadowRoot!.querySelector(".tile")!;
+      expect(box.classList.contains("styled")).toBe(true);
+      expect(box.getAttribute("style")).toContain(`--tile-color:${look.color}`);
+      expect(box.getAttribute("aria-label")).toBe("Lamp, Door open");
+      expect(tile(el).shadowRoot!.querySelector(".status")!.textContent).toBe("Door open");
+      expect(tile(el).shadowRoot!.querySelector<HTMLElement & { icon?: string }>("ha-state-icon")!.icon).toBe("mdi:door-open");
+      el.hass = door("off");
+      await pass(el);
+      expect(tile(el).look).toBeUndefined();
+      await tile(el).updateComplete;
+      expect(tile(el).shadowRoot!.querySelector(".tile")!.classList.contains("styled")).toBe(false);
+    });
+
+    it("uses the colours of the design that is chosen", async () => {
+      const rule: Rules = [{ when: [{ condition: "state", entity: "light.lamp", state: "on" }], color: "accent" }];
+      const home = await root(homeHass(), { pages: tilePage(rule), design: "home", mode: "dark" });
+      const bauhaus = await root(homeHass(), { pages: tilePage(rule), design: "bauhaus", mode: "light" });
+      expect(tile(home).look?.color).toBe(resolveTokens("home", "dark").accent);
+      expect(tile(bauhaus).look?.color).toBe(resolveTokens("bauhaus", "light").accent);
+    });
+
+    it("keeps one look object while the look does not change, so the tile is not repainted for nothing", async () => {
+      const el = await root(homeHass(), { pages: tilePage([{ when: [{ condition: "state", entity: "light.lamp", state: "on" }], color: "good" }]) });
+      const first = tile(el).look;
+      expect(first).toBeDefined();
+      el.hass = homeHass();
+      await pass(el);
+      expect(tile(el).look).toBe(first);
+    });
+
+    it("judges a time rule on the minute too", async () => {
+      vi.setSystemTime(new Date("2026-11-12T10:59:30"));
+      const el = await root(homeHass(), { pages: tilePage([{ when: [{ condition: "time", before: "11:00" }], status: "Morning" }]) });
+      expect(tile(el).look).toEqual({ status: "Morning" });
+      await vi.advanceTimersByTimeAsync(31_000);
+      await pass(el);
+      expect(tile(el).look).toBeUndefined();
+    });
+  });
+
+  describe("templates", () => {
+    type Message = { result?: unknown; error?: string };
+    /** A Home Assistant connection that remembers who subscribed to what and lets the test send results */
+    const connect = () => {
+      const subs: { template: string; send: (message: Message) => void; stop: ReturnType<typeof vi.fn> }[] = [];
+      const connection = {
+        subscribeMessage: vi.fn(async (callback: (message: Message) => void, message: { template: string }) => {
+          const stop = vi.fn();
+          subs.push({ template: message.template, send: callback, stop });
+          return stop;
+        }),
+      } as unknown as Hass["connection"];
+      return { subs, hass: homeHass({ connection }) };
+    };
+    const when = (value_template: string): Page[] => [{ id: "p", name: "P", items: [{ id: "h", type: "heading", text: "Shown" }, { id: "x", type: "heading", text: "Conditional", show_if: [{ condition: "template", value_template }] }] }];
+    const tile = (el: AmbidashRoot) => el.shadowRoot!.querySelector<AmbidashTile>("ambidash-tile")!;
+
+    it("draws an item with a template condition once Home Assistant says yes, and takes it away when it says no", async () => {
+      const { hass, subs } = connect();
+      const el = await root(hass, { pages: when("{{ a }}") });
+      await pass(el);
+      expect(subs.map((s) => s.template)).toEqual(["{{ a }}"]);
+      expect(texts(el, ".heading")).toEqual(["Shown"]); // no answer yet
+      subs[0].send({ result: true });
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown", "Conditional"]);
+      subs[0].send({ result: "off" });
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown"]);
+      subs[0].send({ error: "boom" });
+      await pass(el);
+      expect(texts(el, ".heading")).toEqual(["Shown"]);
+    });
+
+    it("names a tile by its template, and by the device's own name while there is no answer or the template fails", async () => {
+      const { hass, subs } = connect();
+      const pages: Page[] = [{ id: "p", name: "P", items: [{ id: "t", type: "tile", entity: "light.lamp", name: "{{ states('sensor.x') }}" }] }];
+      const el = await root(hass, { pages });
+      await pass(el);
+      expect(tile(el).name).toBe("Lamp");
+      subs[0].send({ result: "Reading light" });
+      await pass(el);
+      expect(tile(el).name).toBe("Reading light");
+      subs[0].send({ error: "boom" });
+      await pass(el);
+      expect(tile(el).name).toBe("Lamp");
+    });
+
+    it("shows a status template and a template condition of a state rule", async () => {
+      const { hass, subs } = connect();
+      const pages: Page[] = [{ id: "p", name: "P", items: [{ id: "t", type: "tile", entity: "light.lamp", states: [{ when: [{ condition: "template", value_template: "{{ a }}" }], color: "alert", status: "{{ b }}" }] }] }];
+      const el = await root(hass, { pages });
+      await pass(el);
+      expect(subs.map((s) => s.template).sort()).toEqual(["{{ a }}", "{{ b }}"]);
+      const send = (template: string, message: Message) => subs.find((s) => s.template === template)!.send(message);
+      expect(tile(el).look).toBeUndefined();
+      send("{{ a }}", { result: true });
+      await pass(el);
+      expect(tile(el).look).toMatchObject({ color: expect.any(String) });
+      expect(tile(el).look?.status).toBeUndefined(); // the status has no answer yet
+      send("{{ b }}", { result: "27 °C" });
+      await pass(el);
+      expect(tile(el).look?.status).toBe("27 °C");
+    });
+
+    it("subscribes once for a template that is used twice, and lets go when the card leaves", async () => {
+      const { hass, subs } = connect();
+      const pages: Page[] = [{ id: "p", name: "P", items: [{ id: "a", type: "heading", text: "A", show_if: [{ condition: "template", value_template: "{{ a }}" }] }, { id: "b", type: "heading", text: "B", show_if: [{ condition: "template", value_template: "{{ a }}" }] }] }];
+      const el = await root(hass, { pages });
+      await pass(el);
+      expect(subs).toHaveLength(1);
+      el.remove();
+      await pass(el);
+      expect(subs[0].stop).toHaveBeenCalledTimes(1);
+    });
+
+    it("subscribes to nothing for a dashboard without templates", async () => {
+      const { hass, subs } = connect();
+      const el = await root(hass, { pages: [{ id: "p", name: "P", items: [{ id: "h", type: "heading", text: "Plain" }] }] });
+      await pass(el);
+      expect(subs).toEqual([]);
+    });
   });
 
   it("follows the width of the card: four columns on a phone, twelve on a wall display", async () => {

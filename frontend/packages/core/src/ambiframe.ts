@@ -1,6 +1,6 @@
 // Ambiframe's styles as Ambidash designs. The data comes from Ambiframe's own export (see tools/import-ambiframe.mjs);
 // this file maps its tokens onto the tile tokens and lists the ids both projects use for the same design.
-import { AF_FONTS, AF_THEMES, type AfTheme } from "./ambiframe.generated";
+import { AF_COLON, AF_FONTS, AF_THEMES, type AfTheme } from "./ambiframe.generated";
 import { contrast, parseColor, type Rgba } from "./contrast";
 import { CALM_DARK, CALM_LIGHT } from "./base";
 import type { Design } from "./designs";
@@ -154,7 +154,7 @@ export const AMBIFRAME_NEW: Design[] = AF_THEMES.map((theme) => ({ id: theme.id,
 /** Ambiframe's id of a design Ambidash made by hand (the seasons all follow Ambiframe's "saisonal") */
 const AF_ID: Record<string, string> = Object.fromEntries(Object.entries(HAND_MADE).map(([af, id]) => [id, af.startsWith("saison-") ? "saisonal" : af]));
 
-/** A hand-made design with Ambiframe's fonts instead of system ones, so both projects set the same type */
+/** A hand-made design with Ambiframe's fonts instead of system ones, and its clock's weight, tracking and colon, so both projects set the same type */
 export const ambiframeFonts = (design: Design): Design => {
   const af = AF_ID[design.id] ?? design.id;
   const fonts = AF_FONTS[af];
@@ -163,5 +163,7 @@ export const ambiframeFonts = (design: Design): Design => {
   const shared: Tokens = { ...design.shared, ...Object.fromEntries(Object.entries(rest).map(([key, value]) => [key, words(value)])) };
   if (sans) shared.font = words(sans);
   if (display) shared.display = words(display);
-  return { ...design, aliases: af === design.id ? design.aliases : [af], shared };
+  const colon = AF_COLON[af];
+  const mode = (tokens: Tokens, m: "dark" | "light"): Tokens => ({ ...tokens, ...Object.fromEntries(Object.entries(colon?.[m] ?? {}).map(([key, value]) => [key, words(value)])) });
+  return { ...design, aliases: af === design.id ? design.aliases : [af], shared, dark: mode(design.dark, "dark"), light: mode(design.light, "light") };
 };

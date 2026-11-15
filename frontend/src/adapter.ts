@@ -50,6 +50,69 @@ export const browseFolder = async (hass: Hass, folder: string): Promise<string[]
 export const placeholderPhotos = (hass: Hass, source: string, language?: string): Promise<{ url: string; credit: string }[]> =>
   hass.callWS ? hass.callWS({ type: "ambidash/photos/placeholder", source, language }) : Promise.resolve([]);
 
+interface CardWindow {
+  loadCardHelpers?: () => Promise<unknown>;
+}
+
+/** Home Assistant's card helpers exist once its dashboard code has loaded; a custom panel such as the Studio has none until a dashboard was opened. */
+export const cardsAvailable = (): boolean => typeof (window as CardWindow).loadCardHelpers === "function";
+
+/** An element of Home Assistant's own hui-card for a card configuration (it builds custom cards, runs their actions and rebuilds when a custom card is defined later). Rejects when cards are not available here. */
+export const createCard = async (config: Record<string, unknown>): Promise<HTMLElement & { hass?: Hass }> => {
+  const load = (window as CardWindow).loadCardHelpers;
+  if (!load) throw new Error("card helpers are not available here");
+  await load();
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("hui-card is not available")), 3000);
+    void customElements.whenDefined("hui-card").then(() => (clearTimeout(timer), resolve()));
+  });
+  const card = document.createElement("hui-card") as HTMLElement & { hass?: Hass; config?: unknown };
+  card.config = config;
+  return card;
+};
+
+/** One day of a weather entity's daily forecast */
+export interface ForecastDay {
+  datetime: string;
+  condition?: string;
+  temperature?: number;
+  templow?: number;
+}
+
+/** Bit of `supported_features` of a weather entity that says it has a daily forecast */
+export const FORECAST_DAILY = 1;
+
+/** Calls back with the daily forecast of a weather entity now and whenever it changes; returns the function that ends it. Without a connection nothing happens. */
+export const subscribeForecast = async (hass: Hass, entityId: string, callback: (days: ForecastDay[]) => void): Promise<() => void> =>
+  hass.connection
+    ? hass.connection.subscribeMessage<{ forecast?: ForecastDay[] | null }>((m) => callback(m.forecast ?? []), { type: "weather/subscribe_forecast", forecast_type: "daily", entity_id: entityId })
+    : () => undefined;
+
+/** The state as Home Assistant writes it in the user's language ("Partly cloudy"); the raw state where it cannot say */
+export const stateLabel = (hass: Hass, state: HassEntity): string => {
+  try {
+    return hass.formatEntityState?.(state) || state.state;
+  } catch {
+    return state.state;
+  }
+};
+
+/** A dashboard of this Home Assistant; the default one has no url path */
+export interface DashboardInfo {
+  url_path: string | null;
+  title: string;
+}
+
+/** The default dashboard followed by the others (admins only) */
+export const listDashboards = async (hass: Hass, defaultTitle: string): Promise<DashboardInfo[]> => {
+  const list = hass.callWS ? await hass.callWS<{ url_path: string; title?: string }[]>({ type: "lovelace/dashboards/list" }) : [];
+  return [{ url_path: null, title: defaultTitle }, ...list.map((d) => ({ url_path: d.url_path, title: d.title || d.url_path }))];
+};
+
+/** The configuration of a dashboard (views and cards); rejects with code `config_not_found` for one that builds itself */
+export const loadDashboardConfig = (hass: Hass, urlPath: string | null): Promise<unknown> =>
+  hass.callWS ? hass.callWS({ type: "lovelace/config", url_path: urlPath, force: false }) : Promise.reject(new Error("no connection"));
+
 /** Go to a path inside Home Assistant without reloading the page (what HA's own navigate() does). */
 export const navigate = (path: string): void => {
   window.history.pushState(null, "", path);

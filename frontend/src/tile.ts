@@ -3,6 +3,7 @@ import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import { callService, moreInfo } from "./adapter";
 import { tileView } from "./describe";
 import { t } from "./i18n";
+import type { TileLook } from "./statestyle";
 import type { Hass, HassEntity, TileAction } from "./types";
 
 const HOLD_MS = 500;
@@ -15,6 +16,7 @@ export class AmbidashTile extends LitElement {
     name: {},
     tap: {},
     hold: {},
+    look: { attribute: false },
     pending: { state: true },
   };
 
@@ -76,7 +78,8 @@ export class AmbidashTile extends LitElement {
       color: var(--ambi-ink-2);
       transition: background var(--ambi-dur, 0.25s) var(--ambi-ease, ease);
     }
-    .on .icon {
+    .on .icon,
+    .styled .icon {
       background: var(--tile-color);
       color: var(--tile-glyph);
     }
@@ -127,6 +130,8 @@ export class AmbidashTile extends LitElement {
   /** What a tap / a long press does instead of the default; see TileAction */
   tap?: TileAction;
   hold?: TileAction;
+  /** What a state rule of the item changes: the colour of the icon bubble, the icon, the status text */
+  look?: TileLook;
   /** The state a tap expects, shown at once until Home Assistant confirms or contradicts it */
   private pending?: boolean;
   private holdTimer?: number;
@@ -149,14 +154,15 @@ export class AmbidashTile extends LitElement {
     if (!s) return nothing;
     const view = tileView(s);
     const on = this.pending ?? view.on;
-    const status = this.pending === undefined ? view.status : on ? t("On") : t("Off");
+    const look = this.look;
+    const status = look?.status ?? (this.pending === undefined ? view.status : on ? t("On") : t("Off"));
     return html`<div
-      class="tile ${on ? "on" : ""} ${view.unavailable ? "offline" : ""}"
+      class="tile ${on ? "on" : ""} ${look?.color ? "styled" : ""} ${view.unavailable ? "offline" : ""}"
       role="button"
       tabindex="0"
       aria-pressed=${view.action === "toggle" ? String(on) : nothing}
       aria-label=${t("{name}, {status}", { name: this.name, status })}
-      style="--tile-color:${view.color};--tile-glyph:${view.glyph}"
+      style="--tile-color:${look?.color ?? view.color};--tile-glyph:${look?.glyph ?? view.glyph}"
       @pointerdown=${this.onDown}
       @pointerup=${this.onUp}
       @pointercancel=${this.onCancel}
@@ -164,7 +170,7 @@ export class AmbidashTile extends LitElement {
       @keydown=${this.onKey}
       @contextmenu=${this.onContext}
     >
-      <span class="icon"><ha-state-icon .hass=${this.hass} .stateObj=${s}></ha-state-icon></span>
+      <span class="icon"><ha-state-icon .hass=${this.hass} .stateObj=${s} .icon=${look?.icon}></ha-state-icon></span>
       <span class="text"><span class="name">${this.name}</span><span class="status">${status}</span></span>
     </div>`;
   }

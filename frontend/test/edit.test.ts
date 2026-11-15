@@ -124,6 +124,62 @@ describe("pages", () => {
     expect(base.items[0].text).toBe("Kitchen");
   });
 
+  it("sets the conditions of one item and leaves nothing behind for an empty list", () => {
+    const wall = [{ condition: "device" as const, devices: ["wall" as const] }];
+    const shown = setItem(base, "a", { show_if: wall });
+    expect(shown.items.find((i) => i.id === "a")?.show_if).toEqual(wall);
+    expect(setItem(shown, "a", { name: "Lamp" }).items.find((i) => i.id === "a")?.show_if).toEqual(wall);
+    expect("show_if" in (setItem(shown, "a", { show_if: [] }).items.find((i) => i.id === "a") ?? {})).toBe(false);
+    expect("show_if" in (setItem(shown, "a", { show_if: undefined }).items.find((i) => i.id === "a") ?? {})).toBe(false);
+    expect(base.items.find((i) => i.id === "a")).not.toHaveProperty("show_if");
+  });
+
+  it("sets the state rules of one item and leaves nothing behind for an empty list", () => {
+    const rules = [{ when: [{ condition: "state" as const, entity: "light.a", state: "on" }], color: "good" as const }];
+    const styled = setItem(base, "a", { states: rules });
+    expect(styled.items.find((i) => i.id === "a")?.states).toEqual(rules);
+    expect("states" in (setItem(styled, "a", { states: [] }).items.find((i) => i.id === "a") ?? {})).toBe(false);
+    expect(base.items.find((i) => i.id === "a")).not.toHaveProperty("states");
+  });
+
+  it("adds a card four cells wide and three high next to the tiles, and the whole width of a phone", () => {
+    const card = { type: "card" as const, card: { type: "markdown", content: "x" } };
+    const tablet = addItem(base, "tablet", card);
+    expect(tablet.id).toBe("c4");
+    expect(boxesOf(tablet.page, "tablet")[tablet.id]).toEqual([4, 1, 4, 3]);
+    const phone = addItem(base, "phone", card);
+    expect(boxesOf(phone.page, "phone")[phone.id][2]).toBe(4);
+    expect(tablet.page.items.at(-1)).toEqual({ ...card, id: "c4" });
+  });
+
+  it("adds a clock and a weather widget with the sizes of their kind and ids of their own", () => {
+    const clock = addItem(base, "tablet", { type: "clock" });
+    expect(clock.id).toBe("k4");
+    expect(boxesOf(clock.page, "tablet")[clock.id].slice(2)).toEqual([4, 2]);
+    const weather = addItem(clock.page, "tablet", { type: "weather", entity: "weather.home" });
+    expect(weather.id).toBe("w5");
+    expect(boxesOf(weather.page, "tablet")[weather.id].slice(2)).toEqual([4, 4]);
+    expect(boxesOf(addItem(base, "phone", { type: "weather", entity: "weather.home" }).page, "phone")["w4"][2]).toBe(4);
+  });
+
+  it("stores a clock or weather option only when it is not the default, and sets it again", () => {
+    const added = addItem(base, "tablet", { type: "clock" }).page;
+    const set = (patch: Parameters<typeof setItem>[2]) => setItem(added, "k4", patch).items.find((i) => i.id === "k4");
+    expect(set({ seconds: true })).toEqual({ id: "k4", type: "clock", seconds: true });
+    expect(set({ seconds: false, date: true, format: "auto" })).toEqual({ id: "k4", type: "clock" });
+    expect(set({ date: false, format: "24" })).toEqual({ id: "k4", type: "clock", date: false, format: "24" });
+    const weather = addItem(base, "tablet", { type: "weather", entity: "weather.home" }).page;
+    expect(setItem(weather, "w4", { forecast: false }).items.find((i) => i.id === "w4")).toEqual({ id: "w4", type: "weather", entity: "weather.home", forecast: false });
+    expect(setItem(weather, "w4", { forecast: true }).items.find((i) => i.id === "w4")).toEqual({ id: "w4", type: "weather", entity: "weather.home" });
+  });
+
+  it("replaces the configuration of a card, whole", () => {
+    const added = addItem(base, "tablet", { type: "card", card: { type: "markdown", content: "x", extra: 1 } }).page;
+    const next = setItem(added, "c4", { card: { type: "tile", entity: "light.a" } });
+    expect(next.items.find((i) => i.id === "c4")?.card).toEqual({ type: "tile", entity: "light.a" });
+    expect(added.items.find((i) => i.id === "c4")?.card).toEqual({ type: "markdown", content: "x", extra: 1 });
+  });
+
   it("swaps the device and sets what a tap or a long press does; an empty value brings the default back", () => {
     const acting = setItem(setItem(setItem(base, "a", { entity: "light.desk" }), "a", { tap: "popup" }), "a", { hold: "more-info" });
     expect(acting.items.find((i) => i.id === "a")).toEqual({ id: "a", type: "tile", entity: "light.desk", tap: "popup", hold: "more-info" });

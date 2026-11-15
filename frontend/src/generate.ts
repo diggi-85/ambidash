@@ -1,5 +1,6 @@
 // "Create from areas": a starting layout made from the floors and areas Home Assistant knows, to be moved around afterwards.
 import { t } from "./i18n";
+import "./studio/i18n-studio";
 import type { Model } from "./model";
 import type { LayoutItem, Page } from "./types";
 

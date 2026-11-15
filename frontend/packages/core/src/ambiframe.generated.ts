@@ -1177,66 +1177,250 @@ export const AF_THEMES: AfTheme[] = [
   }
 ];
 
-/** Fonts of the styles made by hand, by Ambiframe's id */
+/** Fonts and clock weight and tracking of the styles made by hand, by Ambiframe's id */
 export const AF_FONTS: Record<string, Record<string, string>> = {
   ruhig: {
     display: K4,
-    sans: K0
+    sans: K0,
+    "clock-weight": "300",
+    "clock-track": "-0.02em"
   },
   klar: {
     display: K0,
-    sans: K0
+    sans: K0,
+    "clock-weight": "200",
+    "clock-track": "-0.05em"
   },
   gold: {
     display: K4,
-    sans: K0
+    sans: K0,
+    "clock-weight": "300",
+    "clock-track": "-0.02em"
   },
   glass: {
     display: K0,
-    sans: K0
+    sans: K0,
+    "clock-weight": "300",
+    "clock-track": "-0.04em"
   },
   aurora: {
     display: K6,
-    sans: K0
+    sans: K0,
+    "clock-weight": "200",
+    "clock-track": "-0.03em"
   },
   editorial: {
     display: K11,
-    sans: K0
+    sans: K0,
+    "clock-weight": "400",
+    "clock-track": "-0.01em"
   },
   minimal: {
     display: K3,
-    sans: K3
+    sans: K3,
+    "clock-weight": "400",
+    "clock-track": "-0.055em"
   },
   klartext: {
     display: K0,
-    sans: K0
+    sans: K0,
+    "clock-weight": "650",
+    "clock-track": "-0.03em"
   },
   bauhaus: {
     display: K6,
-    sans: K7
+    sans: K7,
+    "clock-weight": "800",
+    "clock-track": "-0.03em"
   },
   softui: {
     display: K1,
-    sans: K1
+    sans: K1,
+    "clock-weight": "300",
+    "clock-track": "-0.03em"
   },
   papier: {
     display: K9,
-    sans: K0
+    sans: K0,
+    "clock-weight": "400",
+    "clock-track": "-0.02em"
   },
   eink: {
     display: K0,
-    sans: K0
+    sans: K0,
+    "clock-weight": "600",
+    "clock-track": "-0.03em"
   },
   swiss: {
     display: K0,
-    sans: K0
+    sans: K0,
+    "clock-weight": "800",
+    "clock-track": "-0.05em"
   },
   rams: {
     display: K10,
-    sans: K10
+    sans: K10,
+    "clock-weight": "300",
+    "clock-track": "-0.03em"
   },
   saisonal: {
     display: K4,
-    sans: K0
+    sans: K0,
+    "clock-weight": "300",
+    "clock-track": "-0.02em"
+  }
+};
+
+/** The clock's colon (colour and opacity) of the styles made by hand, by Ambiframe's id and mode */
+export const AF_COLON: Record<string, Record<"dark" | "light", Record<string, string>>> = {
+  ruhig: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "0.55"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "0.5"
+    }
+  },
+  klar: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "0.55"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "0.5"
+    }
+  },
+  gold: {
+    dark: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    }
+  },
+  glass: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "0.55"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "0.5"
+    }
+  },
+  aurora: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "0.55"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "0.5"
+    }
+  },
+  editorial: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "0.55"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "0.5"
+    }
+  },
+  minimal: {
+    dark: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    }
+  },
+  klartext: {
+    dark: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    }
+  },
+  bauhaus: {
+    dark: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    }
+  },
+  softui: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "0.55"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "0.5"
+    }
+  },
+  papier: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "1"
+    }
+  },
+  eink: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "1"
+    }
+  },
+  swiss: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "1"
+    }
+  },
+  rams: {
+    dark: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    },
+    light: {
+      colon: "var(--af-accent)",
+      "colon-opacity": "1"
+    }
+  },
+  saisonal: {
+    dark: {
+      colon: "inherit",
+      "colon-opacity": "0.55"
+    },
+    light: {
+      colon: "inherit",
+      "colon-opacity": "0.5"
+    }
   }
 };

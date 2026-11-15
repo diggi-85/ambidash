@@ -1,5 +1,6 @@
-// Entry point: defines the strategy, the root card and the tile, and offers Ambidash in the "Add dashboard" dialog.
+// Entry point: defines the strategy, the root card, the tile and the widgets as cards of their own, and offers Ambidash in the "Add dashboard" dialog.
 import "./root";
+import "./single";
 import "./tile";
 import { AmbidashStrategy } from "./strategy";
 

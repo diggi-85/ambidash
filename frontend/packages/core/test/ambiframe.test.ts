@@ -63,6 +63,15 @@ describe("the same designs as Ambiframe", () => {
     else if (radius === "0") expect(resolveTokens(design.id, "dark").radius).toBe("0");
   });
 
+  it("gives the hand-made designs Ambiframe's clock: weight, tracking and the colon, in dark and light", () => {
+    const calm = resolveTokens("calm", "dark");
+    expect([calm["clock-weight"], calm["clock-track"], calm.colon, calm["colon-opacity"]]).toEqual(["300", "-0.02em", "inherit", "0.55"]);
+    expect(resolveTokens("calm", "light")["colon-opacity"]).toBe("0.5");
+    const bauhaus = resolveTokens("bauhaus", "dark");
+    expect([bauhaus["clock-weight"], bauhaus.colon, bauhaus["colon-opacity"]]).toEqual(["800", "var(--ambi-accent)", "1"]);
+    expect(resolveTokens("tiles", "dark")["clock-weight"]).toBe("600");
+  });
+
   it("knows every Ambiframe palette", () => {
     const palettes = (data as unknown as { palettes: Record<string, { dark: { bg: string; accent: string }; light: { bg: string } }> }).palettes;
     for (const [id, p] of Object.entries(palettes)) {

@@ -1,17 +1,21 @@
 // The Studio: the admin panel in Home Assistant's sidebar where dashboards are set up, with a preview that runs on your real data.
 import { DESIGNS, PALETTES, designCss, resolveTokens, type Mode } from "@ambi/core";
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
-import { isDark, loadStored, navigate, restoreStored, saveStored } from "../adapter";
+import { live } from "lit/directives/live.js";
+import { entityName, isDark, listDashboards, loadDashboardConfig, loadStored, navigate, restoreStored, saveStored, type DashboardInfo } from "../adapter";
 import { generatePages } from "../generate";
 import { resolveLang, setLang, t } from "../i18n";
+import "./i18n-studio";
 import { DOMAINS, buildModel, type Domain } from "../model";
 import "../root";
 import "../tile";
 import type { AmbidashRoot } from "../root";
-import type { AmbidashConfig, Background, Hass, Page, StoredConfig, StoredDashboard } from "../types";
+import type { AmbidashConfig, Background, Hass, Page, RestConfig, StoredConfig, StoredDashboard } from "../types";
 import { KINDS, kindOf, startOf, withBackground, type BackgroundKind } from "./background";
+import { importDashboard } from "./dashboard-import";
 import { History } from "./history";
 import { toYaml, toggleIn } from "./options";
+import { REST_WHEN, readConditions, restWhenOf } from "./when";
 import "./layout-editor";
 
 const DEVICES = { phone: { width: 390, height: 720 }, tablet: { width: 768, height: 600 }, wide: { width: 1180, height: 560 } } as const;
@@ -75,6 +79,11 @@ export class AmbidashStudio extends LitElement {
     previewWidth: { state: true },
     view: { state: true },
     kindPick: { state: true },
+    importOpen: { state: true },
+    importList: { state: true },
+    importPick: { state: true },
+    importNote: { state: true },
+    restWhenText: { state: true },
     advancedOn: { state: true },
     advText: { state: true },
   };
@@ -278,6 +287,19 @@ export class AmbidashStudio extends LitElement {
       padding: 0 2px 2px;
       font-size: 12px;
     }
+    .import {
+      margin-top: 12px;
+      padding: 12px;
+      max-width: 480px;
+      border: 1px solid var(--divider-color);
+      border-radius: 12px;
+    }
+    .import label {
+      display: block;
+      margin: 8px 0 4px;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+    }
     .check {
       display: flex;
       align-items: center;
@@ -455,6 +477,13 @@ export class AmbidashStudio extends LitElement {
   private device: Device = "phone";
   private saving = false;
   private sidebar = new Set<string>();
+  /** The import panel of the Contents step: whether it is open, the dashboards to choose from, the choice ("" is the default dashboard) and the last result */
+  private importOpen = false;
+  private importList: DashboardInfo[] = [];
+  private importPick = "";
+  private importNote?: { error: boolean; text: string };
+  /** The conditions of the Ruhemodus as typed as YAML, kept while they are not (yet) valid */
+  private restWhenText?: string;
   private creating = false;
   private newName = "";
   private previewWidth = 360;
@@ -511,6 +540,7 @@ export class AmbidashStudio extends LitElement {
   };
 
   protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("editing")) this.restWhenText = undefined;
     if (changed.has("hass") && this.hass) {
       setLang(resolveLang(undefined, this.hass.language));
       if (this.loadState === "idle") void this.load();
@@ -666,6 +696,49 @@ export class AmbidashStudio extends LitElement {
   /** The layout editor reports the new pages; no pages left means the automatic view again */
   private setPages(pages: Page[], historyKey?: string): void {
     this.setOption("pages", pages.length ? pages : undefined, historyKey);
+  }
+
+  private async toggleImport(): Promise<void> {
+    this.importOpen = !this.importOpen;
+    this.importNote = undefined;
+    if (!this.importOpen || this.importList.length || !this.hass) return;
+    try {
+      this.importList = await listDashboards(this.hass, t("Overview"));
+    } catch (err) {
+      this.importNote = { error: true, text: t("Could not read the dashboard: {error}", { error: message(err) }) };
+    }
+  }
+
+  /** Takes the views of the chosen dashboard over as pages, after the pages this dashboard already has */
+  private async runImport(): Promise<void> {
+    const hass = this.hass;
+    const dashboard = this.current;
+    if (!hass || !dashboard) return;
+    const generated = t("This dashboard is generated automatically and has no cards to import.");
+    this.importNote = undefined;
+    let config: unknown;
+    try {
+      config = await loadDashboardConfig(hass, this.importPick || null);
+    } catch (err) {
+      const notFound = (err as { code?: string } | undefined)?.code === "config_not_found";
+      this.importNote = { error: true, text: notFound ? generated : t("Could not read the dashboard: {error}", { error: message(err) }) };
+      return;
+    }
+    const existing = dashboard.options.pages ?? [];
+    const result = importDashboard(config, existing);
+    if (!result.ok) {
+      this.importNote = { error: true, text: result.reason === "strategy" ? generated : t("Nothing to import: the dashboard has no cards.") };
+      return;
+    }
+    this.setOption("pages", [...existing, ...result.pages]);
+    const r = result.report;
+    const parts = [t("Imported {pages} pages: {tiles} tiles, {headings} headings and {cards} cards.", { pages: r.pages, tiles: r.tiles, headings: r.headings, cards: r.cards })];
+    if (r.widgets) parts.push(t("{n} clock and weather widgets were made from clock and weather cards.", { n: r.widgets }));
+    if (r.conditions) parts.push(t("{n} items only show under the conditions their cards had.", { n: r.conditions }));
+    if (r.badges) parts.push(t("Badges are not imported."));
+    if (r.skipped) parts.push(t("{n} entries could not be taken over.", { n: r.skipped }));
+    if (r.cut) parts.push(t("Some pages or items were left out because of the limits."));
+    this.importNote = { error: false, text: parts.join(" ") };
   }
 
   /** A starting layout from the floors and areas: one page per floor, to be moved around afterwards */
@@ -827,8 +900,141 @@ export class AmbidashStudio extends LitElement {
           ${choices.map(([full, label]) => html`<button class=${full === wall ? "on" : ""} @click=${() => this.chooseDevice(full)}>${label}</button>`)}
         </div>
         <div class="hint">${choices.find((c) => c[0] === wall)?.[2]}</div>
-      </div>`;
+      </div>
+      ${this.restSection(d)}`;
   }
+
+  /** The Ruhemodus: a calm clock instead of the dashboard after some minutes without a touch (options.rest) */
+  private restSection(d: StoredDashboard) {
+    const rest = d.options.rest;
+    const hass = this.hass;
+    const weather = Object.values(hass?.states ?? {})
+      .filter((s) => s.entity_id.startsWith("weather."))
+      .map((s) => ({ id: s.entity_id, name: hass ? entityName(hass, s) : s.entity_id }))
+      .sort((a, b) => a.name.localeCompare(b.name, hass?.language));
+    const change = (patch: Partial<RestConfig>, key?: string): void => this.setRest({ ...rest, ...patch }, key);
+    const classes: ["phone" | "tablet" | "wall", string][] = [["phone", t("Phone")], ["tablet", t("Tablet")], ["wall", t("Wall display")]];
+    const devices = rest?.devices ?? ["tablet", "wall"];
+    const formats: [string, string][] = [["auto", t("Like the language")], ["12", t("12 hours")], ["24", t("24 hours")]];
+    const checkbox = (label: string, checked: boolean, apply: (on: boolean) => void) =>
+      html`<label class="check"><input type="checkbox" .checked=${live(checked)} @change=${(e: Event) => apply((e.target as HTMLInputElement).checked)} /> ${label}</label>`;
+    return html`<div class="field">
+        ${checkbox(t("Rest mode"), !!rest, (on) => this.setRest(on ? {} : undefined))}
+        <div class="hint">${t("A calm clock instead of the dashboard after some time without a touch. A touch wakes it.")}</div>
+      </div>
+      ${rest
+        ? html`<div class="field">
+              <label for="ra">${t("Starts after (minutes)")}</label>
+              <input
+                id="ra"
+                type="number"
+                min="1"
+                max="240"
+                style="width: 96px"
+                .value=${String(rest.after ?? 5)}
+                @input=${(e: Event) => {
+                  const minutes = Number((e.target as HTMLInputElement).value);
+                  if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 240) change({ after: minutes }, "rest:after");
+                }}
+              />
+            </div>
+            <div class="field">
+              <label for="rf">${t("Time format")}</label>
+              <select id="rf" @change=${(e: Event) => change({ format: (e.target as HTMLSelectElement).value as RestConfig["format"] })}>
+                ${formats.map(([v, label]) => html`<option value=${v} .selected=${(rest.format ?? "auto") === v}>${label}</option>`)}
+              </select>
+              ${checkbox(t("Show seconds"), !!rest.seconds, (on) => change({ seconds: on }))} ${checkbox(t("Show the date"), rest.date !== false, (on) => change({ date: on }))}
+            </div>
+            <div class="field">
+              <label for="rw">${t("Weather")}</label>
+              <select id="rw" @change=${(e: Event) => change({ weather: (e.target as HTMLSelectElement).value || undefined })}>
+                <option value="" .selected=${!rest.weather}>${t("No weather")}</option>
+                ${weather.map((w) => html`<option value=${w.id} .selected=${rest.weather === w.id}>${w.name}</option>`)}
+              </select>
+            </div>
+            <div class="field">
+              <label for="rd">${t("Darken the background")}</label>
+              <input id="rd" type="range" min="0" max="90" step="5" .value=${String(rest.dim ?? 40)} @input=${(e: Event) => change({ dim: Number((e.target as HTMLInputElement).value) }, "rest:dim")} />
+              <span>${rest.dim ?? 40} %</span>
+            </div>
+            <div class="field">
+              <label>${t("For")}</label>
+              ${classes.map(([kind, label]) =>
+                checkbox(label, devices.includes(kind), (on) => {
+                  const next = classes.map(([k]) => k).filter((k) => (k === kind ? on : devices.includes(k)));
+                  if (next.length) change({ devices: next });
+                  else this.requestUpdate(); // at least one device class stays
+                }),
+              )}
+            </div>
+            ${this.restWhenField(rest)}
+            <div class="actions"><button @click=${this.tryRest}>${t("Try it now")}</button></div>
+            <div class="hint">${t("Fully Kiosk has a screensaver of its own: let it start later than this.")}</div>`
+        : nothing}`;
+  }
+
+  /** When the Ruhemodus may start: a sentence to choose, and (in advanced mode) the conditions as YAML for everything else */
+  private restWhenField(rest: RestConfig) {
+    const current = restWhenOf(rest.when);
+    const labels: Record<string, string> = {
+      always: t("Whenever nobody touches it"),
+      morning: t("Only in the morning (05:00–11:00)"),
+      day: t("Only during the day (08:00–18:00)"),
+      evening: t("Only in the evening (17:00–23:00)"),
+      night: t("Only at night (22:00–05:00)"),
+      quiet: t("Not while a media player is playing"),
+      custom: t("Own conditions"),
+    };
+    const ids = [...REST_WHEN.map((w) => w.id), ...(current === "custom" ? ["custom"] : [])];
+    const choose = (e: Event): void => {
+      const id = (e.target as HTMLSelectElement).value;
+      if (id === "custom") return;
+      this.restWhenText = undefined;
+      this.setRest({ ...rest, when: REST_WHEN.find((w) => w.id === id)!.show_if });
+    };
+    const read = this.restWhenText === undefined ? undefined : readConditions(this.restWhenText);
+    const now = rest.when ?? [];
+    // undo, redo or another change: show the conditions as they are now
+    const text = this.restWhenText === undefined || (Array.isArray(read) && JSON.stringify(read) !== JSON.stringify(now)) ? (now.length ? toYaml(now) : "") : this.restWhenText;
+    return html`<div class="field">
+      <label for="rwhen">${t("When it may start")}</label>
+      <select id="rwhen" @change=${choose}>
+        ${ids.map((id) => html`<option value=${id} .selected=${id === current}>${labels[id]}</option>`)}
+      </select>
+      ${this.advancedOn
+        ? html`<label for="rwhen-yaml">${t("Conditions (YAML)")}</label>
+            <textarea id="rwhen-yaml" rows="5" spellcheck="false" .value=${live(text)} @input=${(e: Event) => this.editRestWhen(rest, (e.target as HTMLTextAreaElement).value)}></textarea>
+            ${typeof read === "string" ? html`<div class="hint" style="color: var(--error-color, #db4437)">${read}</div>` : nothing}`
+        : nothing}
+      <div class="hint">${t("It starts only while this holds, and ends when it stops holding.")}</div>
+    </div>`;
+  }
+
+  private editRestWhen(rest: RestConfig, text: string): void {
+    const read = readConditions(text);
+    if (Array.isArray(read)) this.setRest({ ...rest, when: read }, "rest:when");
+    this.restWhenText = text;
+  }
+
+  /** The options of the Ruhemodus; what is at its default is left out, so the YAML stays short */
+  private setRest(rest: RestConfig | undefined, key?: string): void {
+    if (!rest) return this.setOption("rest", undefined);
+    const tidy: RestConfig = { ...rest };
+    if (tidy.after === 5) delete tidy.after;
+    if (tidy.format === "auto") delete tidy.format;
+    if (!tidy.seconds) delete tidy.seconds;
+    if (tidy.date !== false) delete tidy.date;
+    if (!tidy.weather) delete tidy.weather;
+    if (tidy.dim === 40) delete tidy.dim;
+    if (tidy.devices?.join() === "tablet,wall") delete tidy.devices;
+    if (!tidy.when?.length) delete tidy.when;
+    this.setOption("rest", tidy, key);
+  }
+
+  /** Shows the Ruhemodus in the preview; a click on it wakes it again */
+  private tryRest = (): void => {
+    this.renderRoot.querySelector<AmbidashRoot>("ambidash-root")?.startRest();
+  };
 
   private chooseDevice(wall: boolean): void {
     this.device = wall ? "tablet" : "phone";
@@ -866,8 +1072,20 @@ export class AmbidashStudio extends LitElement {
         <div class="actions" style="margin-top: 8px">
           ${o.pages?.length ? html`<button class="primary" @click=${() => (this.view = "layout")}>${t("Edit layout")}</button>` : nothing}
           <button @click=${this.createLayout}>${t("Create from areas")}</button>
+          <button aria-expanded=${String(this.importOpen)} @click=${this.toggleImport}>${t("Import from a dashboard")}</button>
           ${o.pages?.length ? html`<button @click=${() => this.setOption("pages", undefined)}>${t("Back to automatic")}</button>` : nothing}
         </div>
+        ${this.importOpen
+          ? html`<div class="import">
+              <div class="hint">${t("Every view becomes a page. Devices and headings become tiles and headings, every other card is embedded as it is. The dashboard you import stays as it is.")}</div>
+              <label for="imp">${t("Dashboard to import")}</label>
+              <select id="imp" @change=${(e: Event) => (this.importPick = (e.target as HTMLSelectElement).value)}>
+                ${this.importList.map((d) => html`<option value=${d.url_path ?? ""} ?selected=${(d.url_path ?? "") === this.importPick}>${d.title}</option>`)}
+              </select>
+              <div class="actions" style="margin-top: 8px"><button class="primary" ?disabled=${!this.importList.length} @click=${this.runImport}>${t("Import")}</button></div>
+              ${this.importNote ? html`<div class="hint" role="status" style=${this.importNote.error ? "color: var(--error-color, #db4437)" : ""}>${this.importNote.text}</div>` : nothing}
+            </div>`
+          : nothing}
       </div>`;
   }
 
@@ -1034,14 +1252,14 @@ export class AmbidashStudio extends LitElement {
   }
 
   private renderLayoutView(d: StoredDashboard) {
-    return html`<ambidash-layout-editor .hass=${this.hass} .pages=${d.options.pages ?? []} .options=${d.options} .onChange=${(pages: Page[], key?: string) => this.setPages(pages, key)}></ambidash-layout-editor>`;
+    return html`<ambidash-layout-editor .hass=${this.hass} .pages=${d.options.pages ?? []} .options=${d.options} .advanced=${this.advancedOn} .onChange=${(pages: Page[], key?: string) => this.setPages(pages, key)}></ambidash-layout-editor>`;
   }
 
   private renderPreview() {
     const { width, height } = DEVICES[this.device];
     const scale = Math.min(1, this.previewWidth / width);
     return html`<div class="pbox" style="height:${Math.round(height * scale)}px">
-      <div class="frame" style="width:${width}px;height:${height}px;transform:scale(${scale});--ambi-vh:${height}px"><ambidash-root .hass=${this.hass}></ambidash-root></div>
+      <div class="frame" style="width:${width}px;height:${height}px;transform:scale(${scale});--ambi-vh:${height}px"><ambidash-root .hass=${this.hass} .preview=${true}></ambidash-root></div>
     </div>`;
   }
 }

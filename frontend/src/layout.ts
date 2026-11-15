@@ -14,15 +14,37 @@ export interface Placed {
   h: number;
 }
 
-/** Headings and the summary span the whole row by default; tiles are two cells wide and high */
-const wide = (item: LayoutItem): boolean => item.type !== "tile";
-const MIN: Record<LayoutItem["type"], readonly [number, number]> = { tile: [2, 2], heading: [1, 1], summary: [1, 1] };
+interface Kind {
+  /** What the ids of new items of this kind start with */
+  prefix: string;
+  /** Spans the whole row by default (headings and the summary); the others sit side by side */
+  wide?: boolean;
+  /** The smallest it may be, in cells: width, height */
+  min: readonly [number, number];
+  /** The size a new one gets (on a phone no wider than the row) */
+  size: readonly [number, number];
+}
+
+/** Everything the grid needs to know about a kind of item; a new kind of item starts here */
+const KINDS: Record<LayoutItem["type"], Kind> = {
+  tile: { prefix: "t", min: [2, 2], size: [2, 2] },
+  heading: { prefix: "h", wide: true, min: [1, 1], size: [8, 1] },
+  summary: { prefix: "s", wide: true, min: [1, 1], size: [8, 1] },
+  card: { prefix: "c", min: [2, 2], size: [4, 3] },
+  clock: { prefix: "k", min: [2, 2], size: [4, 2] },
+  weather: { prefix: "w", min: [2, 2], size: [4, 4] },
+};
+
+const wide = (item: Pick<LayoutItem, "type">): boolean => !!KINDS[item.type].wide;
 
 /** The smallest a kind of item may be, in cells: width, height */
-export const minSize = (item: LayoutItem): readonly [number, number] => MIN[item.type];
+export const minSize = (item: Pick<LayoutItem, "type">): readonly [number, number] => KINDS[item.type].min;
 
-/** The size a new item gets: tiles two by two, headings and the summary across the whole width */
-export const defaultSize = (item: LayoutItem, cols: number): [number, number] => (wide(item) ? [cols, 1] : [2, 2]);
+/** What the ids of new items of this kind start with */
+export const idPrefix = (item: Pick<LayoutItem, "type">): string => KINDS[item.type].prefix;
+
+/** The size a new item gets: headings and the summary across the whole width, the others as their kind says (never wider than the row) */
+export const defaultSize = (item: Pick<LayoutItem, "type">, cols: number): [number, number] => (wide(item) ? [cols, 1] : [Math.min(KINDS[item.type].size[0], cols), KINDS[item.type].size[1]]);
 
 interface Size {
   id: string;
@@ -63,7 +85,7 @@ const bottom = (boxes: Record<string, Box>): number => Math.max(0, ...Object.val
 
 /** A box that fits the grid and the smallest size of its kind */
 const clamp = ([x, y, w, h]: Box, item: LayoutItem, cols: number): Box => {
-  const [minW, minH] = MIN[item.type];
+  const [minW, minH] = minSize(item);
   const width = Math.max(minW, Math.min(w, cols));
   return [Math.max(0, Math.min(x, cols - width)), Math.max(0, y), width, Math.max(minH, h)];
 };
@@ -87,9 +109,10 @@ const boxesFor = (page: Page, device: Device): Record<string, Box> => {
   const rank = (i: LayoutItem): number[] => (tablet[i.id] ? [tablet[i.id][1], tablet[i.id][0]] : [Infinity, Infinity]);
   const ordered = missing.slice().sort((a, b) => rank(a)[0] - rank(b)[0] || rank(a)[1] - rank(b)[1]);
   const sizes = ordered.map((i): Size => {
-    const [minW, minH] = MIN[i.type];
+    const [minW, minH] = minSize(i);
+    const [defW, defH] = defaultSize(i, cols);
     const box = tablet[i.id];
-    return { id: i.id, wide: wide(i), w: box ? Math.max(minW, box[2]) : 2, h: box ? Math.max(minH, box[3]) : wide(i) ? 1 : 2 };
+    return { id: i.id, wide: wide(i), w: box ? Math.max(minW, box[2]) : defW, h: box ? Math.max(minH, box[3]) : defH };
   });
   return { ...own, ...flow(sizes, cols, bottom(own)) };
 };

@@ -29,6 +29,8 @@ export interface Hass {
   /** The WebSocket connection; subscriptions come back with a function that ends them */
   connection?: { subscribeMessage<T>(callback: (message: T) => void, subscribe: Record<string, unknown>): Promise<() => void> };  /** Home Assistant's own naming (2026.11: device name + entity name) */
   formatEntityName?(stateObj: HassEntity): string;
+  /** Home Assistant's own wording of a state in the user's language */
+  formatEntityState?(stateObj: HassEntity): string;
 }
 
 /** What sits behind the tiles: a picture, a colour, a gradient, or a mix (picture over gradient over colour). */
@@ -52,6 +54,27 @@ export interface Background {
   interval?: number;
   /** Show the credit line of placeholder photos (default true) */
   credit?: boolean;
+}
+
+/**
+ * The Ruhemodus: after some minutes without a touch the dashboard shows a calm clock instead of its page, over the dimmed
+ * background. A touch wakes it. Having the object turns it on; every field is optional.
+ */
+export interface RestConfig {
+  /** Minutes without a touch before it starts: 1 to 240, default 5 */
+  after?: number;
+  /** The clock, the same options as the clock widget: how the time is written, seconds (default no) and the date (default yes) */
+  format?: "auto" | "12" | "24";
+  seconds?: boolean;
+  date?: boolean;
+  /** A weather entity shown under the clock */
+  weather?: string;
+  /** How much the background is darkened, in percent: 0 to 90, default 40 */
+  dim?: number;
+  /** The device classes it is for: default tablet and wall display, not the phone */
+  devices?: Device[];
+  /** It may start only while all of these hold, and ends when one stops holding (left out: whenever nobody touches it) */
+  when?: Condition[];
 }
 
 /** Options of `custom:ambidash-root`, passed through from `strategy: { type: custom:ambidash, … }` */
@@ -84,17 +107,53 @@ export interface AmbidashConfig {
   dashboard?: string;
   /** Own layout: pages with items placed on a grid. Without pages all devices are shown automatically, area by area. */
   pages?: Page[];
+  /** The Ruhemodus (a calm clock after some time without a touch); left out, there is none */
+  rest?: RestConfig;
 }
 
 /** The screen classes a layout is made for; each has its own number of columns (see layout.ts) */
 export type Device = "phone" | "tablet" | "wall";
 /** Where an item sits on the grid: column, row, width and height, counted in cells from 0 */
 export type Box = [x: number, y: number, w: number, h: number];
-/** A tile of a device, a heading (text) or the row of summary chips */
+/**
+ * When something is shown, as plain data in the shape Ambiframe uses (see conditions.ts for how they are judged).
+ * Times are "HH:MM" and may run over midnight (after 22:00, before 05:00); the groups need at least one condition.
+ */
+export type Condition =
+  | { condition: "state" | "not_state"; entity: string; state: string | string[]; attribute?: string }
+  | { condition: "numeric"; entity: string; above?: number; below?: number; attribute?: string }
+  | { condition: "time"; after?: string; before?: string }
+  | { condition: "device"; devices: Device[] }
+  /** A Jinja template that Home Assistant judges (see template.ts): true, on, yes, enable, 1 or a number other than 0 holds */
+  | { condition: "template"; value_template: string }
+  | { condition: "and" | "or" | "not"; conditions: Condition[] };
+
+/** How a tile looks while its conditions hold: a design colour for the icon bubble, another icon, another status text */
+export interface StateStyle {
+  when: Condition[];
+  color?: "accent" | "good" | "alert";
+  /** An icon such as mdi:door-open */
+  icon?: string;
+  status?: string;
+}
+
+/** A tile of a device, a heading (text), the row of summary chips or a Home Assistant card (its configuration in `card`) */
 export interface LayoutItem {
   id: string;
-  type: "tile" | "heading" | "summary";
+  type: "tile" | "heading" | "summary" | "card" | "clock" | "weather";
+  /** Shown only while all of these hold (left out: always shown) */
+  show_if?: Condition[];
+  /** Tile: the first of these rules that holds changes how the tile looks */
+  states?: StateStyle[];
   entity?: string;
+  /** Clock: how the time is written (`auto` follows the language), whether it shows seconds (default no) and the date (default yes) */
+  format?: "auto" | "12" | "24";
+  seconds?: boolean;
+  date?: boolean;
+  /** Weather: whether the forecast of the next days is shown (default yes) */
+  forecast?: boolean;
+  /** The configuration of a Home Assistant card, as in its YAML: always has a `type` (tile, entities, custom:bubble-card …) */
+  card?: Record<string, unknown>;
   text?: string;
   /** Replaces the tile's name */
   name?: string;

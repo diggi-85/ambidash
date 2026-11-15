@@ -19,6 +19,10 @@ export const createI18n = (dicts: Partial<Record<Lang, Dict>>) => {
       const l = (hassLanguage || (typeof navigator !== "undefined" ? navigator.language : "") || "en").toLowerCase().split("-")[0];
       return isLang(l) ? l : "en";
     },
+    /** Adds texts to the dictionaries (a part of the interface that is loaded later brings its own); a later text wins */
+    extend: (more: Partial<Record<Lang, Dict>>): void => {
+      for (const lang of Object.keys(more) as Lang[]) dicts[lang] = { ...dicts[lang], ...more[lang] };
+    },
     /** Locale for dates and numbers */
     locale: (): string => LOCALES[current],
     /** Translate; `{name}` is replaced by `vars.name`. A missing translation shows the English source. */

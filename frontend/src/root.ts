@@ -1,16 +1,23 @@
 // The dashboard card `custom:ambidash-root`: summary chips, then floors → areas → tiles.
-import { SHADES, backdropTone, designCss, type Mode } from "@ambi/core";
+import { SHADES, backdropTone, cssVars, designCss, resolveTokens, type Mode, type Tokens } from "@ambi/core";
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import { entityName, isDark, navigate, resolveImage, subscribeStored } from "./adapter";
+import { checkAll, usesTime, type Context } from "./conditions";
 import { resolveLang, setLang, t } from "./i18n";
 import { COLUMNS, deviceFor, resolveLayout } from "./layout";
 import { areaNameOf, buildModel, summarize, type Item, type Model } from "./model";
 import { SlideshowController, slideshowOn } from "./photos";
+import { REST_DIM, RestController } from "./rest";
+import { lookFor, type TileLook } from "./statestyle";
+import { TemplateWatcher, isTemplate, templateText, templatesOfPages } from "./template";
+import "./card";
+import "./clock";
 import { registerFonts } from "./fonts";
 import "./popup";
 import "./tile";
-import type { AmbidashConfig, Background, Device, Hass, LayoutItem, Page } from "./types";
+import "./weather";
+import type { AmbidashConfig, Background, Device, Hass, HassEntity, LayoutItem, Page, RestConfig } from "./types";
 
 /** Values from the dashboard configuration end up in a style attribute; drop what could break out of it. */
 const clean = (value: unknown): string => String(value).replace(/[;{}<>\\"]/g, "");
@@ -55,11 +62,13 @@ export class AmbidashRoot extends LitElement {
     device: { state: true },
     pageId: { state: true },
     popupFor: { state: true },
+    preview: { type: Boolean },
   };
 
   static styles = css`
     :host {
       display: block;
+      position: relative;
       height: 100%;
     }
     :host([fullscreen]) {
@@ -85,6 +94,78 @@ export class AmbidashRoot extends LitElement {
       z-index: 1;
       max-width: 1280px;
       margin: 0 auto;
+      transition: opacity 0.8s ease;
+    }
+    /* The Ruhemodus: the page steps back (nobody can reach it, see inert) and the layer shows a calm clock over the dimmed background */
+    .page[inert] {
+      opacity: 0;
+    }
+    .rest {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      place-items: center;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: rgba(0, 0, 0, var(--rest-dim, 0.4));
+      cursor: pointer;
+      font: inherit;
+      color: #fff;
+      /* Light on dark whatever the design: the dimmed ground and the scrim behind the clock keep it readable */
+      --ambi-ink: #fff;
+      --ambi-ink-2: rgba(255, 255, 255, 0.85);
+      --ambi-accent: #fff;
+      --ambi-line: rgba(255, 255, 255, 0.35);
+      animation: rest-in 0.8s ease both;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .rest:focus-visible {
+      outline: 3px solid #fff;
+      outline-offset: -8px;
+    }
+    .restbox {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: min(86%, 960px);
+      transition: transform 2s ease;
+    }
+    .restbox::before {
+      content: "";
+      position: absolute;
+      inset: -14% -8%;
+      z-index: -1;
+      background: radial-gradient(closest-side, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+    }
+    .restbox ambidash-clock {
+      width: 100%;
+      height: min(36vh, 320px);
+    }
+    .restbox ambidash-weather {
+      width: min(100%, 300px);
+      height: 130px;
+    }
+    /* A calm screen has no buttons: the way back to Home Assistant comes back with the page */
+    .exit.off {
+      visibility: hidden;
+    }
+    @keyframes rest-in {
+      from {
+        opacity: 0;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .page,
+      .restbox {
+        transition: none;
+      }
+      .rest {
+        animation: none;
+      }
     }
     /* Stays in view while the tiles scroll over it; the shade is a veil on top of the picture. A slideshow has two
        layers on top of each other and fades the hidden one in. */
@@ -287,6 +368,18 @@ export class AmbidashRoot extends LitElement {
   private device: Device = "tablet";
   private pageId?: string;
   private sizer?: ResizeObserver;
+  /** Judges the time conditions again every minute, while any item has one */
+  private clockTimer?: number;
+  /** The looks the state rules gave so far, one object for each different look */
+  private looks = new Map<string, TileLook>();
+  /** The Studio's preview does not go to rest by itself (it has a button for it) */
+  preview = false;
+  /** The Ruhemodus: when it starts and whether it is on; not while a pop-up is open */
+  private rest = new RestController(this, () => !this.popupFor && !!this.hass && checkAll(this.hass, this.cfg?.rest?.when, this.context));
+  /** The Jinja templates of the dashboard, judged by Home Assistant; a new result repaints */
+  private templates = new TemplateWatcher(() => this.requestUpdate());
+  private templatesOf?: AmbidashConfig;
+  private wantedTemplates: string[] = [];
   /** The device whose pop-up is open */
   private popupFor?: string;
 
@@ -326,6 +419,29 @@ export class AmbidashRoot extends LitElement {
     this.subscribedTo = undefined;
     this.sizer?.disconnect();
     this.sizer = undefined;
+    this.watchClock(false);
+    this.templates.stop();
+  }
+
+  /** What a condition may ask beside the states: the device class, and the latest result of a template */
+  private get context(): Context {
+    return { device: this.device, templates: (source) => this.templates.value(source) };
+  }
+
+  /** Repaints on the minute (a little after it) for as long as `timed`; a new dashboard that has no time conditions stops it */
+  private watchClock(timed: boolean): void {
+    if (!timed) {
+      window.clearTimeout(this.clockTimer);
+      this.clockTimer = undefined;
+    } else if (this.clockTimer === undefined) {
+      const next = (): void => {
+        this.clockTimer = window.setTimeout(() => {
+          this.requestUpdate();
+          next();
+        }, 60_000 - (Date.now() % 60_000) + 50);
+      };
+      next();
+    }
   }
 
   /** The dashboard saved in the Studio and kept up to date: a save there shows here at once. */
@@ -376,6 +492,14 @@ export class AmbidashRoot extends LitElement {
       this.model = buildModel(hass, t("Unassigned"), cfg);
     }
     this.toggleAttribute("fullscreen", !!cfg.fullscreen);
+    if (cfg !== this.templatesOf) {
+      this.templatesOf = cfg;
+      this.wantedTemplates = templatesOfPages(cfg.pages, cfg.rest);
+    }
+    this.templates.sync(hass, this.wantedTemplates);
+    this.rest.configure(cfg.rest, this.device, !this.preview);
+    this.rest.check();
+    this.watchClock(!!cfg.pages?.some((p) => p.items.some((i) => usesTime(i.show_if) || i.states?.some((s) => usesTime(s.when)))));
     this.slides.configure(cfg.background);
     const src = cfg.background?.image;
     if (src !== this.imageSrc) {
@@ -409,22 +533,47 @@ export class AmbidashRoot extends LitElement {
     const urls = slides.active && (slides.urls[0] || slides.urls[1]) ? slides.urls : [this.imageUrl, undefined];
     const front = slides.active ? slides.front : 0;
 
-    return html`<div class="root" style=${designCss(cfg.design, mode, { palette: cfg.palette, accent: cfg.accent, cardStyle: cfg.card_style, backdrop: backdrop?.tokens })}>
+    const tokens = resolveTokens(cfg.design, mode, { palette: cfg.palette, accent: cfg.accent, cardStyle: cfg.card_style, backdrop: backdrop?.tokens });
+
+    return html`<div class="root" style=${cssVars(tokens)}>
       ${backdrop
         ? html`<div class="bgs">${(slides.active ? [0, 1] : [0]).map((i) => html`<div class="bg ${front === i ? "front" : ""}" style=${backdrop.style(urls[i])}></div>`)}</div>`
         : html`<div class="art"></div>`}
       ${slides.active && slides.credit ? html`<div class="credit">${slides.credit}</div>` : nothing}
       ${exit
-        ? html`<button class="exit" type="button" aria-label=${t("Back to Home Assistant")} @click=${() => navigate(exit)}>
+        ? html`<button class="exit ${this.rest.resting ? "off" : ""}" type="button" aria-label=${t("Back to Home Assistant")} @click=${() => navigate(exit)}>
             <ha-icon icon="mdi:home-assistant"></ha-icon>
           </button>`
         : nothing}
-      <div class="page">
+      <div class="page" ?inert=${this.rest.resting}>
         ${cfg.fullscreen ? html`<h1>${cfg.title ?? "Ambidash"}</h1>` : nothing}
-        ${cfg.pages?.length ? this.renderPages(hass, cfg.pages, chips) : this.renderAuto(hass, chips)}
+        ${cfg.pages?.length ? this.renderPages(hass, cfg.pages, chips, tokens) : this.renderAuto(hass, chips)}
       </div>
       ${this.popupFor ? html`<ambidash-popup .hass=${hass} .entityId=${this.popupFor} @close=${() => (this.popupFor = undefined)}></ambidash-popup>` : nothing}
+      ${this.rest.resting ? this.renderRest(hass, cfg.rest ?? {}) : nothing}
     </div>`;
+  }
+
+  /** Starts the Ruhemodus now (the Studio's "try it"); a touch, a key or the wheel wakes it */
+  startRest(): void {
+    this.rest.start(true);
+  }
+
+  /** The Ruhemodus: a calm clock, and the weather if there is a weather entity, over the dimmed background */
+  private renderRest(hass: Hass, rest: RestConfig) {
+    const weather = rest.weather ? hass.states[rest.weather] : undefined;
+    const [dx, dy] = this.rest.shift;
+    return html`<button type="button" class="rest" style="--rest-dim:${(rest.dim ?? REST_DIM) / 100}" aria-label=${t("Wake up")} @click=${() => this.rest.wake()} @wheel=${() => this.rest.wake()}>
+      <span class="restbox" style="transform:translate(${dx}px, ${dy}px)">
+        <ambidash-clock .format=${rest.format ?? "auto"} .seconds=${!!rest.seconds} .date=${rest.date !== false}></ambidash-clock>
+        ${weather ? html`<ambidash-weather .stateObj=${weather} .forecast=${false} .hass=${hass}></ambidash-weather>` : nothing}
+      </span>
+    </button>`;
+  }
+
+  /** A page that was scrolled when the Ruhemodus started would leave the layer out of view */
+  protected updated(): void {
+    if (this.rest.resting && this.scrollTop > 0) this.scrollTop = 0;
   }
 
   private chipRow(chips: unknown[]) {
@@ -447,9 +596,11 @@ export class AmbidashRoot extends LitElement {
   }
 
   /** With an own layout: the pages as tabs (when there are several) and the items of the chosen page on the grid of this device. */
-  private renderPages(hass: Hass, pages: Page[], chips: unknown[]) {
+  private renderPages(hass: Hass, pages: Page[], chips: unknown[], tokens: Tokens) {
     const page = pages.find((p) => p.id === this.pageId) ?? pages[0];
-    const placed = resolveLayout(page, this.device);
+    // An item whose conditions do not hold is not drawn at all (its place stays empty); the Studio shows every item
+    const ctx = this.context;
+    const placed = resolveLayout(page, this.device).filter(({ item }) => checkAll(hass, item.show_if, ctx));
     return html`${pages.length > 1
       ? html`<div class="pagetabs" role="tablist">
           ${pages.map((p) => html`<button type="button" role="tab" class=${p === page ? "on" : ""} aria-selected=${String(p === page)} @click=${() => (this.pageId = p.id)}>${p.name}</button>`)}
@@ -459,17 +610,37 @@ export class AmbidashRoot extends LitElement {
       ${repeat(
         placed,
         ({ item }) => item.id,
-        ({ item, x, y, w, h }) => html`<div class="cell" style="grid-column:${x + 1} / span ${w};grid-row:${y + 1} / span ${h}">${this.renderItem(hass, item, chips)}</div>`,
+        ({ item, x, y, w, h }) => html`<div class="cell" style="grid-column:${x + 1} / span ${w};grid-row:${y + 1} / span ${h}">${this.renderItem(hass, item, chips, tokens)}</div>`,
       )}
     </div>`;
   }
 
-  private renderItem(hass: Hass, item: LayoutItem, chips: unknown[]) {
+  /** The name of a tile: its own (a template shows what Home Assistant says, the device's name until it has said it), else the device's */
+  private nameOf(hass: Hass, item: LayoutItem, state: HassEntity): string {
+    const own = isTemplate(item.name) ? templateText(this.templates.value(item.name)) : item.name;
+    return own || entityName(hass, state, areaNameOf(hass, state.entity_id));
+  }
+
+  /** The look a state rule of the item asks for, the same object for the same look: a tile is only repainted when its look really changes */
+  private look(hass: Hass, item: LayoutItem, tokens: Tokens): TileLook | undefined {
+    const look = lookFor(hass, item.states, tokens, this.context);
+    if (!look) return undefined;
+    const key = JSON.stringify(look);
+    return this.looks.get(key) ?? (this.looks.set(key, look), look);
+  }
+
+  private renderItem(hass: Hass, item: LayoutItem, chips: unknown[], tokens: Tokens) {
     if (item.type === "heading") return html`<h3 class="heading">${item.text}</h3>`;
     if (item.type === "summary") return chips.length ? this.chipRow(chips) : nothing;
+    if (item.type === "card") return item.card ? html`<ambidash-card .config=${item.card} .hass=${hass}></ambidash-card>` : nothing;
+    if (item.type === "clock") return html`<ambidash-clock .format=${item.format ?? "auto"} .seconds=${!!item.seconds} .date=${item.date !== false}></ambidash-clock>`;
+    if (item.type === "weather") {
+      const weather = item.entity ? hass.states[item.entity] : undefined;
+      return weather ? html`<ambidash-weather .stateObj=${weather} .forecast=${item.forecast !== false} .hass=${hass}></ambidash-weather>` : nothing;
+    }
     const state = item.entity ? hass.states[item.entity] : undefined;
     if (!item.entity || !state) return nothing;
-    return html`<ambidash-tile .stateObj=${state} .name=${item.name || entityName(hass, state, areaNameOf(hass, item.entity))} .tap=${item.tap} .hold=${item.hold} .hass=${hass}></ambidash-tile>`;
+    return html`<ambidash-tile .stateObj=${state} .name=${this.nameOf(hass, item, state)} .tap=${item.tap} .hold=${item.hold} .look=${this.look(hass, item, tokens)} .hass=${hass}></ambidash-tile>`;
   }
 
   private tiles(hass: Hass, items: Item[]) {

@@ -209,6 +209,12 @@ describe("tile fills and page art", () => {
     for (const tile of tileGrounds(t, t.bg)) for (const key of ["accent", "good", "alert"]) expect(contrast(t[key], tile), `${key} on tile ${tile}`).toBeGreaterThanOrEqual(3);
   });
 
+  // A state rule paints the icon bubble of a tile in one of these colours: the glyph has to read on it (the colour itself is held to 3:1 on the tile above)
+  it.each(ALL.flatMap((d) => MODES.map((m) => [d.id, m] as const)))("%s in %s keeps the glyph readable on the state colours of an icon bubble", (id, mode) => {
+    const t = resolveTokens(id, mode);
+    for (const key of ["accent", "good", "alert"]) expect(contrast(onColor(t[key]), t[key]), `glyph on ${key}`).toBeGreaterThanOrEqual(3);
+  });
+
   it("keeps a design's tile look in the solid style and replaces it in the others", () => {
     expect(resolveTokens("bauhaus", "light")["card-shadow"]).toContain("5px 5px");
     expect(resolveTokens("editorial", "dark")["card-rule"]).toBeTruthy();

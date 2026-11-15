@@ -1,5 +1,5 @@
 // The edits of the layout editor as pure functions: they never change what they are given but return new pages.
-import { COLUMNS, defaultSize, minSize, resolveLayout } from "../layout";
+import { COLUMNS, defaultSize, idPrefix, minSize, resolveLayout } from "../layout";
 import type { Box, Device, LayoutItem, Page } from "../types";
 
 export type Boxes = Record<string, Box>;
@@ -93,11 +93,9 @@ export const newItemId = (page: Page, prefix: string): string => {
   for (let n = page.items.length + 1; ; n++) if (!used.has(`${prefix}${n}`)) return `${prefix}${n}`;
 };
 
-const PREFIX: Record<LayoutItem["type"], string> = { tile: "t", heading: "h", summary: "s" };
-
 /** Adds an item and puts it on the first free place of `device` */
 export const addItem = (page: Page, device: Device, item: Omit<LayoutItem, "id">): { page: Page; id: string } => {
-  const full: LayoutItem = { ...item, id: newItemId(page, PREFIX[item.type]) };
+  const full: LayoutItem = { ...item, id: newItemId(page, idPrefix(item)) };
   const cols = COLUMNS[device];
   const boxes = boxesOf(page, device);
   const [w, h] = defaultSize(full, cols);
@@ -119,7 +117,7 @@ export const duplicateItems = (page: Page, device: Device, ids: string[]): { pag
   for (const id of ids) {
     const original = page.items.find((i) => i.id === id);
     if (!original) continue;
-    const copy: LayoutItem = { ...original, id: newItemId(next, PREFIX[original.type]) };
+    const copy: LayoutItem = { ...original, id: newItemId(next, idPrefix(original)) };
     const [, , w, h] = boxes[id];
     boxes = { ...boxes, [copy.id]: freeSpot(boxes, cols, w, h) };
     next = { ...next, items: [...next.items, copy] };
@@ -128,13 +126,19 @@ export const duplicateItems = (page: Page, device: Device, ids: string[]): { pag
   return { page: withBoxes(next, device, boxes), ids: copies };
 };
 
-/** Changes fields of one item; an empty name, tap or hold is removed (the default applies again) */
-export const setItem = (page: Page, id: string, patch: Partial<Pick<LayoutItem, "name" | "text" | "entity" | "tap" | "hold">>): Page => ({
+/** What an option is when it is left out: a value equal to it is not stored */
+const DEFAULTS = { format: "auto", seconds: false, date: true, forecast: true } as const;
+
+/** Changes fields of one item; an empty name, tap, hold or condition list and a clock or weather option at its default are removed (the default applies again) */
+export const setItem = (page: Page, id: string, patch: Partial<Pick<LayoutItem, "name" | "text" | "entity" | "tap" | "hold" | "card" | "format" | "seconds" | "date" | "forecast" | "show_if" | "states">>): Page => ({
   ...page,
   items: page.items.map((item) => {
     if (item.id !== id) return item;
     const next = { ...item, ...patch };
     for (const key of ["name", "tap", "hold"] as const) if (!next[key]) delete next[key];
+    if (!next.show_if?.length) delete next.show_if;
+    if (!next.states?.length) delete next.states;
+    for (const key of Object.keys(DEFAULTS) as (keyof typeof DEFAULTS)[]) if (next[key] === DEFAULTS[key] || next[key] === undefined) delete next[key];
     return next;
   }),
 });
